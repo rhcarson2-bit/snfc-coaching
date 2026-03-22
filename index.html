@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SNFC Coaching App</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Segoe UI',sans-serif;background:#f4f6f9;color:#1a2540;}
+  input,select,button,textarea{font-family:inherit;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+// ── PASTE YOUR FIREBASE CONFIG HERE ───────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyCT3BhaeL2fPBYZZoyWdiwTIVjoqX67U7g",
+  authDomain: "snfc-coaching.firebaseapp.com",
+  databaseURL: "https://snfc-coaching-default-rtdb.firebaseio.com",
+  projectId: "snfc-coaching",
+  storageBucket: "snfc-coaching.firebasestorage.app",
+  messagingSenderId: "143972480294",
+  appId: "1:143972480294:web:a12e5200e8cf2d06093de7",
+  measurementId: "G-SNK6EXXHTJ"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// ── DB helpers ─────────────────────────────────────────────────────────────
+function dbRead(key, cb) {
+  db.ref(key).on("value", snap => cb(snap.val() || []));
+}
+function dbWrite(key, val) {
+  db.ref(key).set(val);
+}
+function dbOff(key) {
+  db.ref(key).off();
+}
+</script>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const C = {
+  navy:"#0a1f44", red:"#c8102e", gray:"#f4f6f9",
+  grayMid:"#dde2ea", grayDark:"#8a95a3", text:"#1a2540",
+};
+const FMTS = {
+  "11":["4-4-2","4-3-3","4-2-3-1","3-5-2","3-4-3"],
+  "9":["3-3-2","3-2-3","2-4-2","4-3-1","4-2-2","3-4-1"],
+  "7":["3-2-1","2-3-1","2-2-2","3-1-2"]
+};
+const ETYPES = ["Tournament","League","Cup","Friendly"];
+const PLACES = ["Champion","Runner-Up","3rd Place","4th Place","Semifinal","Quarterfinal","Group Stage"];
+const uid = () => Math.random().toString(36).slice(2);
+
+function fpos(fmt, cnt) {
+  const lines = fmt.split("-").map(Number), W=400, H=580, roles=["DEF","MID","ATT","FWD"];
+  const p = [{x:W/2, y:H-45, role:"GK"}];
+  lines.forEach((n,li) => {
+    const yf = 0.78-(li/lines.length)*0.62;
+    for(let i=0;i<n;i++) p.push({x:((i+1)/(n+1))*W, y:yf*H, role:roles[Math.min(li,3)]});
+  });
+  return p.slice(0, cnt+1);
+}
+
+// ── Primitives ────────────────────────────────────────────────────────────
+function Btn({children, onClick, variant="navy", sm=false, style={}}) {
+  const bg = variant==="red"?C.red:variant==="outline"?"transparent":C.navy;
+  const color = variant==="outline"?C.navy:"#fff";
+  const border = variant==="outline"?`2px solid ${C.navy}`:"none";
+  return <button onClick={onClick} style={{padding:sm?"5px 10px":"8px 15px",fontSize:sm?12:14,fontWeight:700,borderRadius:6,border,background:bg,color,cursor:"pointer",fontFamily:"inherit",...style}}>{children}</button>;
+}
+function TextInput({value, onChange, placeholder, type="text", style={}}) {
+  return <input value={value} onChange={onChange} placeholder={placeholder} type={type}
+    style={{padding:"8px 10px",border:`1.5px solid ${C.grayMid}`,borderRadius:6,fontSize:14,width:"100%",fontFamily:"inherit",boxSizing:"border-box",...style}}/>;
+}
+function Dropdown({value, onChange, children, style={}}) {
+  return <select value={value} onChange={onChange}
+    style={{padding:"8px 10px",border:`1.5px solid ${C.grayMid}`,borderRadius:6,fontSize:14,width:"100%",fontFamily:"inherit",boxSizing:"border-box",...style}}>
+    {children}
+  </select>;
+}
+function Card({children, style={}}) {
+  return <div style={{background:"#fff",borderRadius:10,boxShadow:"0 2px 8px rgba(0,0,0,.08)",padding:16,...style}}>{children}</div>;
+}
+function Label({children}) {
+  return <div style={{fontSize:12,fontWeight:700,color:C.grayDark,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>{children}</div>;
+}
+function Modal({children, onClose, maxWidth=900}) {
+  return <div onClick={e=>{if(e.target===e.currentTarget)onClose();}}
+    style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:100,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:20}}>
+    <div style={{background:"#fff",borderRadius:12,padding:22,width:"100%",maxWidth}}>{children}</div>
+  </div>;
+}
+function TH({children, center=false}) {
+  return <th style={{background:C.navy,color:"#fff",padding:"7px 9px",textAlign:center?"center":"left",fontSize:12,whiteSpace:"nowrap"}}>{children}</th>;
+}
+function TD({children, center=false}) {
+  return <td style={{padding:"7px 9px",borderBottom:`1px solid ${C.grayMid}`,textAlign:center?"center":"left"}}>{children}</td>;
+}
+function NumInput({value, onChange, width=56}) {
+  return <input type="number" min="0" value={value} onChange={onChange}
+    style={{width,padding:"5px",border:`1.5px solid ${C.grayMid}`,borderRadius:6,fontSize:13,fontFamily:"inherit",textAlign:"center"}}/>;
+}
+function Jersey({number, size=36, label}) {
+  return <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1,userSelect:"none"}}>
+    <svg width={size} height={size} viewBox="0 0 40 40">
+      <path d="M8,8 L14,4 Q20,2 26,4 L32,8 L36,16 L28,18 L28,36 L12,36 L12,18 L4,16 Z" fill={C.navy} stroke={C.red} strokeWidth="2"/>
+      <text x="20" y="26" textAnchor="middle" fill="#fff" fontSize="12" fontWeight="bold">{number}</text>
+    </svg>
+    {label && <span style={{fontSize:9,color:"#fff",textShadow:"0 1px 2px rgba(0,0,0,.8)",maxWidth:44,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</span>}
+  </div>;
+}
+function EmptyState({message, actionLabel, onAction}) {
+  return <Card style={{textAlign:"center",padding:44}}>
+    <div style={{fontSize:38,marginBottom:10}}>⚽</div>
+    <p style={{color:C.grayDark,marginBottom:14}}>{message}</p>
+    {onAction && <Btn onClick={onAction}>{actionLabel}</Btn>}
+  </Card>;
+}
+
+// ── Soccer Field ──────────────────────────────────────────────────────────
+function SoccerField({fieldPos, getPlayer, onDrop, onDragStart}) {
+  const W=400, H=580;
+  return <div style={{position:"relative",width:"100%",aspectRatio:"400/580",background:"#2e7d32",borderRadius:8,userSelect:"none"}} onDragOver={e=>e.preventDefault()}>
+    <svg viewBox={`0 0 ${W} ${H}`} style={{position:"absolute",inset:0,width:"100%",height:"100%"}}>
+      <rect x="20" y="20" width="360" height="540" fill="none" stroke="rgba(255,255,255,.6)" strokeWidth="2"/>
+      <line x1="20" y1="290" x2="380" y2="290" stroke="rgba(255,255,255,.5)" strokeWidth="1.5"/>
+      <circle cx="200" cy="290" r="40" fill="none" stroke="rgba(255,255,255,.5)" strokeWidth="1.5"/>
+      <circle cx="200" cy="290" r="3" fill="rgba(255,255,255,.7)"/>
+      <rect x="100" y="20" width="200" height="70" fill="none" stroke="rgba(255,255,255,.5)" strokeWidth="1.5"/>
+      <rect x="140" y="20" width="120" height="35" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="1"/>
+      <rect x="100" y="490" width="200" height="70" fill="none" stroke="rgba(255,255,255,.5)" strokeWidth="1.5"/>
+      <rect x="140" y="545" width="120" height="35" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="1"/>
+    </svg>
+    {fieldPos.map((fp, i) => {
+      const p = getPlayer(fp.pid);
+      return <div key={i} draggable={!!fp.pid} onDragStart={e=>onDragStart(e,i)} onDrop={e=>onDrop(e,i)} onDragOver={e=>e.preventDefault()}
+        style={{position:"absolute",left:`${fp.x/W*100}%`,top:`${fp.y/H*100}%`,transform:"translate(-50%,-50%)",zIndex:10,cursor:fp.pid?"grab":"default"}}>
+        {p ? <Jersey number={p.number} size={36} label={p.name.split(" ")[0]}/>
+           : <div onDrop={e=>onDrop(e,i)} onDragOver={e=>e.preventDefault()}
+               style={{width:36,height:36,border:"2px dashed rgba(255,255,255,.4)",borderRadius:4,background:"rgba(0,0,0,.15)"}}/>}
+      </div>;
+    })}
+  </div>;
+}
+
+// ── App ───────────────────────────────────────────────────────────────────
+function App() {
+  const [ready, setReady] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [teams, setTeams] = useState([]);
+  const [seasons, setSeasons] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [games, setGames] = useState([]);
+  const [players, setPlayers] = useState([]);
+  const [selTeam, setSelTeam] = useState(null);
+  const [selSeason, setSelSeason] = useState(null);
+  const [tab, setTab] = useState("dashboard");
+  const [gameModal, setGameModal] = useState(null);
+  const [playerModal, setPlayerModal] = useState(null);
+  const [showAddTeam, setShowAddTeam] = useState(false);
+  const [showAddSeason, setShowAddSeason] = useState(false);
+  const initialized = useRef(false);
+
+  // Subscribe to Firebase on mount
+  useEffect(() => {
+    let count = 0;
+    const done = () => { count++; if(count===5){ setReady(true); initialized.current=true; } };
+    dbRead("teams",   v => { setTeams(Array.isArray(v)?v:Object.values(v||{}));   done(); });
+    dbRead("seasons", v => { setSeasons(Array.isArray(v)?v:Object.values(v||{})); done(); });
+    dbRead("events",  v => { setEvents(Array.isArray(v)?v:Object.values(v||{}));  done(); });
+    dbRead("games",   v => { setGames(Array.isArray(v)?v:Object.values(v||{}));   done(); });
+    dbRead("players", v => { setPlayers(Array.isArray(v)?v:Object.values(v||{})); done(); });
+    return () => { ["teams","seasons","events","games","players"].forEach(dbOff); };
+  }, []);
+
+  // Set default team once data loads
+  useEffect(() => {
+    if(ready && teams.length && !selTeam) setSelTeam(teams[0].id);
+  }, [ready, teams]);
+
+  // Sync writes to Firebase (debounced)
+  const writeTimer = useRef({});
+  const syncWrite = (key, val) => {
+    clearTimeout(writeTimer.current[key]);
+    setSyncing(true);
+    writeTimer.current[key] = setTimeout(() => {
+      dbWrite(key, val);
+      setSyncing(false);
+    }, 600);
+  };
+
+  useEffect(() => { if(initialized.current) syncWrite("teams",   teams);   }, [teams]);
+  useEffect(() => { if(initialized.current) syncWrite("seasons", seasons); }, [seasons]);
+  useEffect(() => { if(initialized.current) syncWrite("events",  events);  }, [events]);
+  useEffect(() => { if(initialized.current) syncWrite("games",   games);   }, [games]);
+  useEffect(() => { if(initialized.current) syncWrite("players", players); }, [players]);
+
+  useEffect(() => {
+    if(selTeam) { const ss=seasons.filter(s=>s.teamId===selTeam); setSelSeason(ss.length?ss[ss.length-1].id:null); }
+  }, [selTeam]);
+
+  const teamSeasons = seasons.filter(s=>s.teamId===selTeam);
+  const seasonEvents = events.filter(e=>e.seasonId===selSeason);
+  const seasonGames = games.filter(g=>g.seasonId===selSeason);
+  const teamPlayers = players.filter(p=>p.teamId===selTeam);
+  const allTeamGames = games.filter(g=>seasons.find(s=>s.teamId===selTeam&&s.id===g.seasonId));
+
+  const openGame = gid => { const g=games.find(x=>x.id===gid); if(g) setGameModal(g); };
+  const openPlayer = pid => { const p=players.find(x=>x.id===pid); if(p) setPlayerModal(p); };
+  const saveGame = g => { setGames(prev=>prev.map(x=>x.id===g.id?g:x)); setGameModal(g); };
+  const deleteGame = gid => { setGames(p=>p.filter(x=>x.id!==gid)); setGameModal(null); };
+
+  const clearAll = () => {
+    if(!window.confirm("Clear ALL data? This cannot be undone.")) return;
+    setTeams([]); setSeasons([]); setEvents([]); setGames([]); setPlayers([]);
+    setSelTeam(null); setSelSeason(null);
+    ["teams","seasons","events","games","players"].forEach(k => dbWrite(k, []));
+  };
+
+  const exportData = () => {
+    const blob = new Blob([JSON.stringify({teams,seasons,events,games,players},null,2)],{type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `snfc_backup_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+  };
+  const importData = () => {
+    const input = document.createElement("input");
+    input.type="file"; input.accept=".json";
+    input.onchange = e => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        try {
+          const d = JSON.parse(ev.target.result);
+          if(d.teams)   setTeams(d.teams);
+          if(d.seasons) setSeasons(d.seasons);
+          if(d.events)  setEvents(d.events);
+          if(d.games)   setGames(d.games);
+          if(d.players) setPlayers(d.players);
+          if(d.teams?.length) setSelTeam(d.teams[0].id);
+          alert("Imported successfully!");
+        } catch { alert("Invalid backup file."); }
+      };
+      reader.readAsText(e.target.files[0]);
+    };
+    input.click();
+  };
+
+  if(!ready) return <div style={{padding:40,textAlign:"center",color:C.navy,fontWeight:700,fontSize:18}}>
+    <div style={{fontSize:48,marginBottom:16}}>⚽</div>Connecting to database…
+  </div>;
+
+  const TABS = [{id:"dashboard",label:"Dashboard"},{id:"schedule",label:"Schedule"},{id:"roster",label:"Roster"},{id:"report",label:"Report"},{id:"trophies",label:"🏆 Trophies"}];
+
+  return <div style={{fontFamily:"'Segoe UI',sans-serif",background:C.gray,minHeight:"100vh",color:C.text}}>
+    <div style={{background:C.navy,padding:"0 12px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",minHeight:52}}>
+      <svg width="24" height="24" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15" fill={C.red} stroke="#fff" strokeWidth="2"/><text x="16" y="21" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="bold">⚽</text></svg>
+      <span style={{color:"#fff",fontWeight:800,fontSize:13,marginRight:4}}>SNFC Coaching</span>
+      {syncing && <span style={{color:"rgba(255,255,255,.6)",fontSize:11}}>saving…</span>}
+      <Dropdown value={selTeam||""} onChange={e=>setSelTeam(e.target.value)} style={{width:145,fontSize:12}}>
+        <option value="">— Team —</option>
+        {teams.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+      </Dropdown>
+      <Btn sm variant="red" onClick={()=>setShowAddTeam(true)} style={{border:"none"}}>+ Team</Btn>
+      {selTeam && <>
+        <Dropdown value={selSeason||""} onChange={e=>setSelSeason(e.target.value)} style={{width:145,fontSize:12}}>
+          <option value="">— Season —</option>
+          {teamSeasons.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+        </Dropdown>
+        <Btn sm variant="red" onClick={()=>setShowAddSeason(true)} style={{border:"none"}}>+ Season</Btn>
+      </>}
+      <div style={{marginLeft:"auto",display:"flex",gap:4,flexWrap:"wrap"}}>
+        {TABS.map(t=><Btn key={t.id} sm onClick={()=>setTab(t.id)} style={{background:tab===t.id?C.red:"transparent",color:"#fff",border:tab===t.id?"none":"1px solid rgba(255,255,255,.3)"}}>{t.label}</Btn>)}
+        <Btn sm onClick={exportData} style={{background:"#2e7d32",color:"#fff",border:"none"}}>⬇ Export</Btn>
+        <Btn sm onClick={importData} style={{background:"#1565c0",color:"#fff",border:"none"}}>⬆ Import</Btn>
+        <Btn sm onClick={clearAll} style={{background:"#444",color:"#fff",border:"none"}}>🗑</Btn>
+      </div>
+    </div>
+
+    <div style={{padding:16,maxWidth:1100,margin:"0 auto"}}>
+      {!selTeam && <EmptyState message="Add a team to get started." actionLabel="+ Add Team" onAction={()=>setShowAddTeam(true)}/>}
+      {selTeam && !selSeason && tab!=="trophies" && <EmptyState message="Add a season for this team." actionLabel="+ Add Season" onAction={()=>setShowAddSeason(true)}/>}
+      {selTeam && selSeason && tab==="dashboard" && <Dashboard games={seasonGames} events={seasonEvents} players={teamPlayers} season={seasons.find(s=>s.id===selSeason)} onOpenGame={openGame} onOpenPlayer={openPlayer}/>}
+      {selTeam && selSeason && tab==="schedule" && <Schedule games={seasonGames} events={seasonEvents} seasonId={selSeason} setGames={setGames} setEvents={setEvents} onOpenGame={openGame}/>}
+      {selTeam && selSeason && tab==="roster" && <Roster players={teamPlayers} games={seasonGames} teamId={selTeam} setPlayers={setPlayers} onOpenPlayer={openPlayer}/>}
+      {selTeam && tab==="report" && <Report players={teamPlayers} games={allTeamGames}/>}
+      {selTeam && tab==="trophies" && <TrophyRoom events={events} seasons={seasons} selTeam={selTeam}/>}
+    </div>
+
+    {showAddTeam && <AddTeamModal onClose={()=>setShowAddTeam(false)} onAdd={t=>{setTeams(p=>[...p,t]);setSelTeam(t.id);setShowAddTeam(false);}}/>}
+    {showAddSeason && selTeam && <AddSeasonModal teamId={selTeam} onClose={()=>setShowAddSeason(false)} onAdd={s=>{setSeasons(p=>[...p,s]);setSelSeason(s.id);setShowAddSeason(false);}}/>}
+    {gameModal && <GameModal game={gameModal} players={teamPlayers} events={seasonEvents} onClose={()=>setGameModal(null)} onSave={saveGame} onDelete={deleteGame}/>}
+    {playerModal && <PlayerModal player={playerModal} games={seasonGames} onClose={()=>setPlayerModal(null)}/>}
+  </div>;
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────
+function Dashboard({ games, events, players, season, onOpenGame, onOpenPlayer }) {
+  const played = games.filter(g=>g.played);
+  const wins = played.filter(g=>g.goalsFor>g.goalsAgainst).length;
+  const losses = played.filter(g=>g.goalsFor<g.goalsAgainst).length;
+  const draws = played.length-wins-losses;
+  const gf = played.reduce((a,g)=>a+(g.goalsFor||0),0);
+  const ga = played.reduce((a,g)=>a+(g.goalsAgainst||0),0);
+  const upcoming = games.filter(g=>!g.played).sort((a,b)=>a.date>b.date?1:-1).slice(0,3);
+  const recent = [...played].sort((a,b)=>a.date>b.date?-1:1).slice(0,5);
+  const statSum = (pid,stat) => played.reduce((a,g)=>{const ps=(g.playerStats||[]).find(p=>p.pid===pid);return a+(ps?ps[stat]||0:0);},0);
+  const topBy = stat => [...players].filter(p=>statSum(p.id,stat)>0).sort((a,b)=>statSum(b.id,stat)-statSum(a.id,stat)).slice(0,3);
+  const getEv = eid => events.find(e=>e.id===eid);
+  const fmtDate = d => { if(!d)return""; try{return new Date(d).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});}catch{return d;} };
+  const resBadge = g => {
+    const r=g.goalsFor>g.goalsAgainst?"win":g.goalsFor<g.goalsAgainst?"loss":"draw";
+    const bg={win:"#d4edda",loss:"#f8d7da",draw:"#fff3cd"}[r], col={win:"#155724",loss:"#721c24",draw:"#856404"}[r];
+    return <span style={{background:bg,color:col,padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:700}}>{g.goalsFor}–{g.goalsAgainst}</span>;
+  };
+
+  return <div>
+    <h2 style={{color:C.navy,marginBottom:12,fontWeight:800}}>{season?.name} — Dashboard</h2>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:10,marginBottom:14}}>
+      {[["Wins",wins,"#155724","#d4edda"],["Losses",losses,"#721c24","#f8d7da"],["Draws",draws,"#856404","#fff3cd"],["Played",played.length,C.navy,"#e8edf7"],["Goals For",gf,"#155724","#d4edda"],["Goals Against",ga,"#721c24","#f8d7da"]].map(([label,value,tc,bg])=>(
+        <Card key={label} style={{textAlign:"center",background:bg,padding:12}}>
+          <div style={{fontSize:24,fontWeight:800,color:tc}}>{value}</div>
+          <div style={{fontSize:11,color:tc,fontWeight:600}}>{label}</div>
+        </Card>
+      ))}
+    </div>
+    <Card style={{marginBottom:12}}>
+      <h3 style={{color:C.navy,marginBottom:10,fontSize:14}}>📊 Record by Event</h3>
+      {events.length===0 && <p style={{color:C.grayDark,fontSize:13}}>No events yet.</p>}
+      {events.length>0 && <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <thead><tr><TH>Event</TH><TH>Type</TH><TH center>W</TH><TH center>L</TH><TH center>D</TH><TH center>GF</TH><TH center>GA</TH></tr></thead>
+          <tbody>
+            {events.map(ev=>{
+              const eg=played.filter(g=>g.eventId===ev.id); if(!eg.length) return null;
+              const ew=eg.filter(g=>g.goalsFor>g.goalsAgainst).length, el=eg.filter(g=>g.goalsFor<g.goalsAgainst).length, ed=eg.length-ew-el;
+              const egf=eg.reduce((a,g)=>a+(g.goalsFor||0),0), ega=eg.reduce((a,g)=>a+(g.goalsAgainst||0),0);
+              return <tr key={ev.id}><TD><strong>{ev.name}</strong></TD><TD>{ev.type}</TD><TD center>{ew}</TD><TD center>{el}</TD><TD center>{ed}</TD><TD center>{egf}</TD><TD center>{ega}</TD></tr>;
+            })}
+            {played.length>0 && <tr style={{background:"#e8edf7"}}>
+              <td colSpan={2} style={{padding:"7px 9px",fontWeight:800,color:C.navy}}>Overall</td>
+              {[wins,losses,draws,gf,ga].map((v,i)=><td key={i} style={{padding:"7px 9px",textAlign:"center",fontWeight:800,color:C.navy}}>{v}</td>)}
+            </tr>}
+          </tbody>
+        </table>
+      </div>}
+    </Card>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+      <Card>
+        <h3 style={{color:C.navy,marginBottom:8,fontSize:14}}>📅 Upcoming Games</h3>
+        {upcoming.length===0 && <p style={{color:C.grayDark,fontSize:13}}>No upcoming games.</p>}
+        {upcoming.map(g=>{const ev=getEv(g.eventId); return <div key={g.id} style={{padding:"6px 0",borderBottom:`1px solid ${C.grayMid}`,fontSize:13}}>
+          <span onClick={()=>onOpenGame(g.id)} style={{cursor:"pointer",textDecoration:"underline",color:C.navy,fontWeight:600}}>vs {g.opponent}</span>
+          <span style={{color:C.grayDark}}> {fmtDate(g.date)}{g.location?` @ ${g.location}`:""}</span>
+          {ev && <div style={{fontSize:11,color:C.grayDark}}>{ev.name}</div>}
+        </div>;})}
+      </Card>
+      <Card>
+        <h3 style={{color:C.navy,marginBottom:8,fontSize:14}}>🕐 Recent Results</h3>
+        {recent.length===0 && <p style={{color:C.grayDark,fontSize:13}}>No results yet.</p>}
+        {recent.map(g=>{const ev=getEv(g.eventId); return <div key={g.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:`1px solid ${C.grayMid}`,fontSize:13}}>
+          <div><span onClick={()=>onOpenGame(g.id)} style={{cursor:"pointer",textDecoration:"underline",color:C.navy}}>vs {g.opponent}</span>{ev&&<div style={{fontSize:11,color:C.grayDark}}>{ev.name}</div>}</div>
+          {resBadge(g)}
+        </div>;})}
+      </Card>
+    </div>
+    <Card>
+      <h3 style={{color:C.navy,marginBottom:8,fontSize:14}}>🏆 Top Performers</h3>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
+        {[["⚽ Goals","goals"],["🎯 Assists","assists"],["🟨 Yellow","yellowCards"],["🟥 Red","redCards"]].map(([label,stat])=>(
+          <div key={stat}>
+            <div style={{fontWeight:700,fontSize:13,marginBottom:4,color:C.navy}}>{label}</div>
+            {topBy(stat).length===0 && <div style={{fontSize:12,color:C.grayDark}}>No data</div>}
+            {topBy(stat).map(p=><div key={p.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"2px 0"}}>
+              <span onClick={()=>onOpenPlayer(p.id)} style={{cursor:"pointer",textDecoration:"underline",color:C.navy}}>#{p.number} {p.name}</span>
+              <strong>{statSum(p.id,stat)}</strong>
+            </div>)}
+          </div>
+        ))}
+      </div>
+    </Card>
+  </div>;
+}
+
+// ── Schedule ──────────────────────────────────────────────────────────────
+function Schedule({ games, events, seasonId, setGames, setEvents, onOpenGame }) {
+  const [editEvent, setEditEvent] = useState(null);
+  const [addEventOpen, setAddEventOpen] = useState(false);
+  const [expanded, setExpanded] = useState(null);
+  const [editGame, setEditGame] = useState(null);
+  const [gameForm, setGameForm] = useState({opponent:"",date:"",location:"",homeAway:"home"});
+  const fmtDate = d => { if(!d)return""; try{return new Date(d).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});}catch{return d;} };
+
+  const addGame = eid => {
+    if(!gameForm.opponent) return;
+    setGames(p=>[...p,{id:uid(),seasonId,eventId:eid,opponent:gameForm.opponent,date:gameForm.date,location:gameForm.location,homeAway:gameForm.homeAway,played:false,goalsFor:0,goalsAgainst:0,h1For:0,h2For:0,h1Against:0,h2Against:0,format:"11",formation:"4-3-3",playerStats:[],fieldPositions:[],notes:""}]);
+    setGameForm({opponent:"",date:"",location:"",homeAway:"home"});
+  };
+  const saveEvent = ev => { setEvents(p=>p.find(e=>e.id===ev.id)?p.map(e=>e.id===ev.id?ev:e):[...p,ev]); setEditEvent(null); setAddEventOpen(false); };
+  const tIcon = {Tournament:"🏟️",League:"📋",Cup:"🥇",Friendly:"🤝"};
+  const pIcon = pl => pl==="Champion"?"🏆":pl==="Runner-Up"?"🥈":null;
+
+  return <div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+      <h2 style={{color:C.navy,fontWeight:800}}>Schedule & Events</h2>
+      <Btn onClick={()=>setAddEventOpen(true)}>+ Add Event</Btn>
+    </div>
+    {events.length===0 && <EmptyState message="Add an event to get started."/>}
+    {events.map(ev=>{
+      const evGames=games.filter(g=>g.eventId===ev.id), isExp=expanded===ev.id;
+      return <Card key={ev.id} style={{marginBottom:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span style={{fontSize:16}}>{pIcon(ev.placement)||tIcon[ev.type]||"📅"}</span>
+          <strong style={{fontSize:15,color:C.navy,flex:1}}>{ev.name}</strong>
+          <span style={{fontSize:11,background:C.grayMid,padding:"2px 7px",borderRadius:20}}>{ev.type}</span>
+          {ev.placement && <span style={{fontSize:12,fontWeight:700,color:ev.placement==="Champion"?C.red:C.navy}}>{ev.placement}</span>}
+          {ev.dates && <span style={{fontSize:12,color:C.grayDark}}>{ev.dates}</span>}
+          <Btn sm variant="outline" onClick={()=>setExpanded(isExp?null:ev.id)}>{isExp?"▲ Hide":"▼ Games"} ({evGames.length})</Btn>
+          <Btn sm onClick={()=>setEditEvent(ev)}>✏️ Edit</Btn>
+          <Btn sm variant="red" onClick={()=>{setEvents(p=>p.filter(e=>e.id!==ev.id));setGames(p=>p.filter(g=>g.eventId!==ev.id));}}>✕</Btn>
+        </div>
+        {isExp && <div style={{marginTop:12}}>
+          <div style={{background:C.gray,borderRadius:8,padding:10,marginBottom:10}}>
+            <div style={{fontWeight:700,fontSize:13,color:C.navy,marginBottom:6}}>Add Game</div>
+            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:6,alignItems:"end"}}>
+              <div><Label>Opponent</Label><TextInput value={gameForm.opponent} onChange={e=>setGameForm({...gameForm,opponent:e.target.value})} placeholder="Team name"/></div>
+              <div><Label>Date & Time</Label><TextInput type="datetime-local" value={gameForm.date} onChange={e=>setGameForm({...gameForm,date:e.target.value})}/></div>
+              <div><Label>Location</Label><TextInput value={gameForm.location} onChange={e=>setGameForm({...gameForm,location:e.target.value})} placeholder="Field"/></div>
+              <div><Label>H/A</Label><Dropdown value={gameForm.homeAway} onChange={e=>setGameForm({...gameForm,homeAway:e.target.value})}><option value="home">Home</option><option value="away">Away</option></Dropdown></div>
+              <Btn onClick={()=>addGame(ev.id)}>Add</Btn>
+            </div>
+          </div>
+          {evGames.length===0 && <p style={{color:C.grayDark,fontSize:13}}>No games yet.</p>}
+          {evGames.length>0 && <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <thead><tr><TH>Date & Time</TH><TH>Opponent</TH><TH>H/A</TH><TH>Location</TH><TH>Result</TH><TH>Actions</TH></tr></thead>
+              <tbody>{evGames.sort((a,b)=>a.date>b.date?1:-1).map(g=>{
+                const r=g.played?(g.goalsFor>g.goalsAgainst?"win":g.goalsFor<g.goalsAgainst?"loss":"draw"):null;
+                const bg={win:"#d4edda",loss:"#f8d7da",draw:"#fff3cd"}, col={win:"#155724",loss:"#721c24",draw:"#856404"};
+                return <tr key={g.id}>
+                  <TD>{fmtDate(g.date)}</TD><TD><strong>{g.opponent}</strong></TD><TD>{g.homeAway}</TD><TD>{g.location}</TD>
+                  <TD>{g.played?<span style={{background:bg[r],color:col[r],padding:"2px 7px",borderRadius:20,fontSize:11,fontWeight:700}}>{g.goalsFor}–{g.goalsAgainst}</span>:<span style={{color:C.grayDark,fontSize:12}}>Not played</span>}</TD>
+                  <TD><div style={{display:"flex",gap:5}}>
+                    <Btn sm onClick={()=>onOpenGame(g.id)}>📋 Detail</Btn>
+                    <Btn sm variant="outline" onClick={()=>setEditGame(g)}>✏️</Btn>
+                    <Btn sm variant="red" onClick={()=>setGames(p=>p.filter(x=>x.id!==g.id))}>✕</Btn>
+                  </div></TD>
+                </tr>;
+              })}</tbody>
+            </table>
+          </div>}
+        </div>}
+      </Card>;
+    })}
+    {(addEventOpen||editEvent) && <EventModal event={editEvent} seasonId={seasonId} onClose={()=>{setAddEventOpen(false);setEditEvent(null);}} onSave={saveEvent}/>}
+    {editGame && <EditGameModal game={editGame} events={events} onClose={()=>setEditGame(null)} onSave={g=>{setGames(p=>p.map(x=>x.id===g.id?g:x));setEditGame(null);}}/>}
+  </div>;
+}
+
+// ── Roster ────────────────────────────────────────────────────────────────
+function Roster({ players, games, teamId, setPlayers, onOpenPlayer }) {
+  const [form, setForm] = useState({name:"",number:""});
+  const played = games.filter(g=>g.played);
+  const statSum = (pid,stat) => played.reduce((a,g)=>{const ps=(g.playerStats||[]).find(p=>p.pid===pid);return a+(ps?ps[stat]||0:0);},0);
+  const starts = pid => played.filter(g=>(g.playerStats||[]).find(p=>p.pid===pid&&p.started)).length;
+  const caps = pid => played.filter(g=>(g.playerStats||[]).find(p=>p.pid===pid&&p.captain)).length;
+  return <div>
+    <h2 style={{color:C.navy,marginBottom:14,fontWeight:800}}>Roster</h2>
+    <Card style={{marginBottom:14}}>
+      <h3 style={{marginBottom:10,fontSize:14,color:C.navy}}>Add Player</h3>
+      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr auto",gap:8,alignItems:"end"}}>
+        <div><Label>Name</Label><TextInput value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Full name"/></div>
+        <div><Label>Jersey #</Label><TextInput type="number" value={form.number} onChange={e=>setForm({...form,number:e.target.value})} placeholder="#"/></div>
+        <Btn onClick={()=>{if(form.name&&form.number){setPlayers(p=>[...p,{id:uid(),teamId,name:form.name,number:parseInt(form.number)}]);setForm({name:"",number:""});}}}>Add</Btn>
+      </div>
+    </Card>
+    <Card>
+      {players.length===0 && <p style={{color:C.grayDark,fontSize:13}}>No players yet.</p>}
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <thead><tr><TH>#</TH><TH>Name</TH><TH center>Goals</TH><TH center>Assists</TH><TH center>🟨</TH><TH center>🟥</TH><TH center>Starts</TH><TH center>Captain</TH><TH></TH></tr></thead>
+          <tbody>{[...players].sort((a,b)=>a.number-b.number).map(p=><tr key={p.id}>
+            <TD><strong>{p.number}</strong></TD>
+            <TD><span onClick={()=>onOpenPlayer(p.id)} style={{cursor:"pointer",textDecoration:"underline",color:C.navy,fontWeight:600}}>{p.name}</span></TD>
+            <TD center>{statSum(p.id,"goals")}</TD><TD center>{statSum(p.id,"assists")}</TD>
+            <TD center>{statSum(p.id,"yellowCards")}</TD><TD center>{statSum(p.id,"redCards")}</TD>
+            <TD center>{starts(p.id)}</TD><TD center>{caps(p.id)}</TD>
+            <TD><Btn sm variant="red" onClick={()=>setPlayers(p2=>p2.filter(x=>x.id!==p.id))}>✕</Btn></TD>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </Card>
+  </div>;
+}
+
+// ── Report ────────────────────────────────────────────────────────────────
+function Report({ players, games }) {
+  const played = games.filter(g=>g.played);
+  const getPos = pid => [...new Set(played.flatMap(g=>{const f=(g.fieldPositions||[]).find(x=>x.pid===pid);return f&&f.role?[f.role]:[];}))];
+  const starts = pid => played.filter(g=>(g.playerStats||[]).find(p=>p.pid===pid&&p.started)).length;
+  const caps = pid => played.filter(g=>(g.playerStats||[]).find(p=>p.pid===pid&&p.captain)).length;
+  return <div>
+    <h2 style={{color:C.navy,marginBottom:14,fontWeight:800}}>Player Summary Report</h2>
+    <Card>
+      {players.length===0 && <p style={{color:C.grayDark,fontSize:13}}>No players on roster.</p>}
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <thead><tr><TH>#</TH><TH>Player</TH><TH center>Started</TH><TH>Positions Played</TH><TH center>Captain</TH></tr></thead>
+          <tbody>{[...players].sort((a,b)=>a.number-b.number).map(p=><tr key={p.id}>
+            <TD><strong>{p.number}</strong></TD><TD>{p.name}</TD>
+            <TD center>{starts(p.id)}</TD>
+            <TD>{getPos(p.id).join(", ")||<span style={{color:C.grayDark}}>—</span>}</TD>
+            <TD center>{caps(p.id)}</TD>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </Card>
+  </div>;
+}
+
+// ── Trophy Room ───────────────────────────────────────────────────────────
+function TrophyRoom({ events, seasons, selTeam }) {
+  const ids = new Set(seasons.filter(s=>s.teamId===selTeam).map(s=>s.id));
+  const trophies = events.filter(e=>ids.has(e.seasonId)&&(e.placement==="Champion"||e.placement==="Runner-Up"));
+  const getSeason = sid => seasons.find(s=>s.id===sid);
+  return <div>
+    <h2 style={{color:C.navy,marginBottom:4,fontWeight:800}}>🏆 Trophy Room</h2>
+    <p style={{color:C.grayDark,fontSize:13,marginBottom:16}}>Champion & Runner-Up finishes.</p>
+    {trophies.length===0 && <Card style={{textAlign:"center",padding:44}}><div style={{fontSize:50,marginBottom:10}}>🏆</div><p style={{color:C.grayDark}}>No trophies yet — go win some!</p></Card>}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(210px,1fr))",gap:14}}>
+      {trophies.map(ev=>{
+        const isChamp=ev.placement==="Champion", sn=getSeason(ev.seasonId);
+        return <Card key={ev.id} style={{textAlign:"center",padding:24,border:`2px solid ${isChamp?"#f0c040":C.grayMid}`,background:isChamp?"#fffbea":"#f8f9ff"}}>
+          <div style={{fontSize:50,marginBottom:6}}>{isChamp?"🏆":"🥈"}</div>
+          <div style={{fontWeight:800,fontSize:16,color:C.navy,marginBottom:3}}>{ev.name}</div>
+          <div style={{fontSize:13,color:C.grayDark,marginBottom:3}}>{ev.type}{ev.dates?` · ${ev.dates}`:""}</div>
+          <div style={{fontSize:11,color:C.grayDark,marginBottom:10}}>{sn?.name}</div>
+          <span style={{padding:"3px 14px",borderRadius:20,fontWeight:700,fontSize:13,background:isChamp?"#f0c040":C.grayMid,color:isChamp?"#7a5c00":C.navy}}>{ev.placement}</span>
+        </Card>;
+      })}
+    </div>
+  </div>;
+}
+
+// ── Game Modal ────────────────────────────────────────────────────────────
+function GameModal({ game, players, events, onClose, onSave, onDelete }) {
+  const [g, setG] = useState({
+    ...game,
+    playerStats:(game.playerStats||[]).map(s=>({...s})),
+    fieldPositions:game.fieldPositions||[],
+    notes:game.notes||"",
+    h1For:game.h1For||0,h2For:game.h2For||0,h1Against:game.h1Against||0,h2Against:game.h2Against||0
+  });
+  const [activeTab, setActiveTab] = useState("stats");
+  const cnt = g.format==="7"?7:g.format==="9"?9:11;
+  const [fieldPos, setFieldPos] = useState(()=>game.fieldPositions?.length?game.fieldPositions:fpos(game.formation||"4-3-3",cnt-1).map(x=>({...x,pid:null})));
+
+  const setStat = (pid,stat,val) => setG(prev=>{
+    const stats=prev.playerStats.map(s=>({...s}));
+    let ps=stats.find(s=>s.pid===pid);
+    if(!ps){ps={pid};stats.push(ps);}
+    ps[stat]=val;
+    return{...prev,playerStats:stats};
+  });
+  const getStat = (pid,stat) => { const ps=g.playerStats.find(s=>s.pid===pid); return ps?(ps[stat]??0):0; };
+  const getBool = (pid,stat) => { const ps=g.playerStats.find(s=>s.pid===pid); return ps?!!ps[stat]:false; };
+
+  const onFormationChange = fmt => {
+    const c=g.format==="7"?7:g.format==="9"?9:11;
+    setFieldPos(prev=>fpos(fmt,c-1).map((x,i)=>({...x,pid:prev[i]?.pid||null})));
+    setG(prev=>({...prev,formation:fmt}));
+  };
+  const onFormatChange = fmt => {
+    const c=fmt==="7"?7:fmt==="9"?9:11;
+    setFieldPos(fpos(g.formation||"4-3-3",c-1).map(x=>({...x,pid:null})));
+    setG(prev=>({...prev,format:fmt}));
+  };
+  const getPlayer = pid => players.find(p=>p.id===pid);
+  const onDragStart = (e,idx) => { e.dataTransfer.setData("pid",fieldPos[idx].pid||""); e.dataTransfer.setData("from","field"); e.dataTransfer.setData("idx",String(idx)); };
+  const onDragStartBench = (e,pid) => { e.dataTransfer.setData("pid",pid); e.dataTransfer.setData("from","bench"); };
+  const onDrop = (e,idx) => {
+    e.preventDefault();
+    const pid=e.dataTransfer.getData("pid"),from=e.dataTransfer.getData("from"),fi=parseInt(e.dataTransfer.getData("idx"));
+    setFieldPos(prev=>{
+      const n=prev.map(x=>({...x}));
+      if(from==="field"){const d=n[idx].pid;n[idx].pid=pid||null;n[fi].pid=d||null;}
+      else{n.forEach(x=>{if(x.pid===pid)x.pid=null;});n[idx].pid=pid||null;}
+      return n;
+    });
+  };
+  const updateHalf = (key,val) => {
+    const v=parseInt(val)||0;
+    setG(prev=>{
+      const n={...prev,[key]:v};
+      n.goalsFor=(key==="h1For"?v:prev.h1For||0)+(key==="h2For"?v:prev.h2For||0);
+      n.goalsAgainst=(key==="h1Against"?v:prev.h1Against||0)+(key==="h2Against"?v:prev.h2Against||0);
+      n.played=true; return n;
+    });
+  };
+  const bench = players.filter(p=>!fieldPos.find(x=>x.pid===p.id));
+  const FMS = FMTS[g.format]||FMTS["11"];
+  const fmtDate = d => { if(!d)return""; try{return new Date(d).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});}catch{return d;} };
+
+  return <Modal onClose={onClose} maxWidth={980}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+      <h2 style={{color:C.navy,fontWeight:800}}>vs {g.opponent} <span style={{fontSize:13,color:C.grayDark,fontWeight:400}}>{fmtDate(g.date)}</span></h2>
+      <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:C.grayDark}}>✕</button>
+    </div>
+    <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14,alignItems:"flex-end"}}>
+      <div><Label>Format</Label>
+        <Dropdown value={g.format} onChange={e=>onFormatChange(e.target.value)} style={{width:95}}>
+          <option value="11">11v11</option><option value="9">9v9</option><option value="7">7v7</option>
+        </Dropdown>
+      </div>
+      <div><Label>Event</Label>
+        <Dropdown value={g.eventId||""} onChange={e=>setG({...g,eventId:e.target.value})} style={{width:180}}>
+          <option value="">— No Event —</option>
+          {events.map(ev=><option key={ev.id} value={ev.id}>{ev.name}</option>)}
+        </Dropdown>
+      </div>
+      <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+        <Btn variant="red" onClick={()=>{if(window.confirm(`Delete vs ${g.opponent}?`))onDelete(g.id);}}>🗑 Delete</Btn>
+        <Btn onClick={()=>onSave({...g,fieldPositions:fieldPos})}>💾 Save</Btn>
+      </div>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+      <Card style={{padding:12}}>
+        <div style={{fontWeight:700,fontSize:13,color:C.navy,marginBottom:8}}>Goals by Half</div>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <thead><tr>
+            <th style={{background:C.navy,color:"#fff",padding:"5px 8px",fontSize:11,textAlign:"left"}}></th>
+            <th style={{background:C.navy,color:"#fff",padding:"5px 8px",fontSize:11,textAlign:"center"}}>1st</th>
+            <th style={{background:C.navy,color:"#fff",padding:"5px 8px",fontSize:11,textAlign:"center"}}>2nd</th>
+            <th style={{background:C.navy,color:"#fff",padding:"5px 8px",fontSize:11,textAlign:"center"}}>Total</th>
+          </tr></thead>
+          <tbody>{[["Us","h1For","h2For"],["Opp","h1Against","h2Against"]].map(([lbl,h1,h2])=>(
+            <tr key={lbl}>
+              <td style={{padding:"5px 8px",borderBottom:`1px solid ${C.grayMid}`,fontWeight:600}}>{lbl}</td>
+              {[h1,h2].map(k=><td key={k} style={{padding:"3px 5px",borderBottom:`1px solid ${C.grayMid}`,textAlign:"center"}}>
+                <NumInput value={g[k]||0} onChange={e=>updateHalf(k,e.target.value)} width={50}/>
+              </td>)}
+              <td style={{padding:"5px 8px",borderBottom:`1px solid ${C.grayMid}`,textAlign:"center",fontWeight:800,color:C.navy}}>{(g[h1]||0)+(g[h2]||0)}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </Card>
+      <Card style={{padding:12}}>
+        <div style={{fontWeight:700,fontSize:13,color:C.navy,marginBottom:6}}>Game Notes</div>
+        <textarea value={g.notes||""} onChange={e=>setG({...g,notes:e.target.value})} placeholder="Tactical notes, key moments…"
+          style={{width:"100%",height:88,padding:"7px 9px",border:`1.5px solid ${C.grayMid}`,borderRadius:6,fontSize:13,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+      </Card>
+    </div>
+    <div style={{display:"flex",gap:6,marginBottom:14}}>
+      {["stats","formation"].map(t=><Btn key={t} sm onClick={()=>setActiveTab(t)} style={{background:activeTab===t?C.navy:"transparent",color:activeTab===t?"#fff":C.navy,border:`2px solid ${C.navy}`}}>{t==="stats"?"Player Stats":"Formation Builder"}</Btn>)}
+    </div>
+    {activeTab==="stats" && <div style={{overflowX:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+        <thead><tr><TH>#</TH><TH>Player</TH><TH center>Goals</TH><TH center>Assists</TH><TH center>🟨</TH><TH center>🟥</TH><TH center>PKs</TH><TH center>Started</TH><TH center>Captain</TH></tr></thead>
+        <tbody>{[...players].sort((a,b)=>a.number-b.number).map(p=><tr key={p.id}>
+          <TD><strong>{p.number}</strong></TD><TD>{p.name}</TD>
+          {["goals","assists","yellowCards","redCards","pks"].map(stat=><TD key={stat} center>
+            <NumInput value={getStat(p.id,stat)} onChange={e=>setStat(p.id,stat,parseInt(e.target.value)||0)}/>
+          </TD>)}
+          <TD center><input type="checkbox" checked={getBool(p.id,"started")} onChange={e=>setStat(p.id,"started",e.target.checked)}/></TD>
+          <TD center><input type="checkbox" checked={getBool(p.id,"captain")} onChange={e=>setStat(p.id,"captain",e.target.checked)}/></TD>
+        </tr>)}</tbody>
+      </table>
+    </div>}
+    {activeTab==="formation" && <div>
+      <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10,flexWrap:"wrap"}}>
+        <div><Label>Formation</Label>
+          <Dropdown value={g.formation||"4-3-3"} onChange={e=>onFormationChange(e.target.value)} style={{width:125}}>
+            {FMS.map(f=><option key={f} value={f}>{f}</option>)}
+          </Dropdown>
+        </div>
+        <div style={{fontSize:12,color:C.grayDark,marginTop:14}}>Drag jerseys onto field. Drag field jerseys to swap.</div>
+      </div>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+        <div style={{flex:"1 1 280px",minWidth:240}}><SoccerField fieldPos={fieldPos} getPlayer={getPlayer} onDrop={onDrop} onDragStart={onDragStart}/></div>
+        <div style={{flex:"0 0 155px"}}>
+          <div style={{fontWeight:700,fontSize:13,color:C.navy,marginBottom:6}}>Bench / Pool</div>
+          <div style={{display:"flex",flexDirection:"column",gap:5,minHeight:50,background:C.gray,borderRadius:8,padding:7}}>
+            {bench.length===0 && <span style={{color:C.grayDark,fontSize:12}}>All placed</span>}
+            {bench.map(p=><div key={p.id} draggable onDragStart={e=>onDragStartBench(e,p.id)}
+              style={{display:"flex",alignItems:"center",gap:5,background:"#fff",borderRadius:6,padding:"3px 7px",cursor:"grab",border:`1px solid ${C.grayMid}`}}>
+              <Jersey number={p.number} size={24}/><span style={{fontSize:12,fontWeight:600}}>{p.name}</span>
+            </div>)}
+          </div>
+        </div>
+      </div>
+    </div>}
+  </Modal>;
+}
+
+// ── Player Modal ──────────────────────────────────────────────────────────
+function PlayerModal({ player, games, onClose }) {
+  const played = games.filter(g=>g.played);
+  const rows = played.map(g=>({g,ps:(g.playerStats||[]).find(p=>p.pid===player.id)||{},fp:(g.fieldPositions||[]).find(f=>f.pid===player.id)}));
+  const tot = rows.reduce((a,{ps})=>({goals:a.goals+(ps.goals||0),assists:a.assists+(ps.assists||0),y:a.y+(ps.yellowCards||0),r:a.r+(ps.redCards||0),starts:a.starts+(ps.started?1:0),caps:a.caps+(ps.captain?1:0)}),{goals:0,assists:0,y:0,r:0,starts:0,caps:0});
+  return <Modal onClose={onClose} maxWidth={740}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+      <h2 style={{color:C.navy}}>#{player.number} {player.name}</h2>
+      <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:C.grayDark}}>✕</button>
+    </div>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
+      {[["Goals",tot.goals,"⚽"],["Assists",tot.assists,"🎯"],["Yellow",tot.y,"🟨"],["Red",tot.r,"🟥"],["Starts",tot.starts,"▶"],["Captain",tot.caps,"©"]].map(([l,v,ic])=>(
+        <div key={l} style={{background:C.gray,borderRadius:8,padding:"7px 12px",textAlign:"center",minWidth:65}}>
+          <div style={{fontSize:17,fontWeight:800,color:C.navy}}>{v}</div>
+          <div style={{fontSize:11,color:C.grayDark}}>{ic} {l}</div>
+        </div>
+      ))}
+    </div>
+    <div style={{overflowX:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+        <thead><tr><TH>Opponent</TH><TH>Date</TH><TH center>Started</TH><TH center>Captain</TH><TH center>Goals</TH><TH center>Assists</TH><TH center>🟨</TH><TH center>🟥</TH><TH>Position</TH></tr></thead>
+        <tbody>
+          {rows.length===0 && <tr><td colSpan={9} style={{padding:10,color:C.grayDark}}>No data yet.</td></tr>}
+          {rows.map(({g,ps,fp})=><tr key={g.id}>
+            <TD>vs {g.opponent}</TD><TD>{g.date?new Date(g.date).toLocaleDateString():""}</TD>
+            <TD center>{ps.started?"✅":""}</TD><TD center>{ps.captain?"©":""}</TD>
+            <TD center>{ps.goals||0}</TD><TD center>{ps.assists||0}</TD>
+            <TD center>{ps.yellowCards||0}</TD><TD center>{ps.redCards||0}</TD>
+            <TD>{fp?.role||"—"}</TD>
+          </tr>)}
+        </tbody>
+      </table>
+    </div>
+  </Modal>;
+}
+
+// ── Event Modal ───────────────────────────────────────────────────────────
+function EventModal({ event, seasonId, onClose, onSave }) {
+  const [f, setF] = useState(event||{id:uid(),seasonId,name:"",type:"Tournament",placement:"",dates:""});
+  return <Modal onClose={onClose} maxWidth={460}>
+    <h3 style={{color:C.navy,marginBottom:14}}>{event?"Edit Event":"Add Event"}</h3>
+    <div style={{display:"grid",gap:10}}>
+      <div><Label>Event Name</Label><TextInput value={f.name} onChange={e=>setF({...f,name:e.target.value})} placeholder="e.g. Heartland Spring Cup"/></div>
+      <div><Label>Type</Label><Dropdown value={f.type} onChange={e=>setF({...f,type:e.target.value})}>{ETYPES.map(t=><option key={t} value={t}>{t}</option>)}</Dropdown></div>
+      <div><Label>Dates (optional)</Label><TextInput value={f.dates} onChange={e=>setF({...f,dates:e.target.value})} placeholder="e.g. Apr 5–7, 2026"/></div>
+      <div><Label>Final Placement</Label>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <Dropdown value={f.placement} onChange={e=>setF({...f,placement:e.target.value})}>
+            <option value="">— Not set —</option>
+            {PLACES.map(p=><option key={p} value={p}>{p}</option>)}
+          </Dropdown>
+          {f.placement==="Champion"&&<span style={{fontSize:26}}>🏆</span>}
+          {f.placement==="Runner-Up"&&<span style={{fontSize:26}}>🥈</span>}
+        </div>
+      </div>
+    </div>
+    <div style={{display:"flex",gap:8,marginTop:16}}>
+      <Btn onClick={()=>{if(f.name)onSave(f);}}>Save</Btn>
+      <Btn variant="outline" onClick={onClose}>Cancel</Btn>
+    </div>
+  </Modal>;
+}
+
+// ── Edit Game Modal ───────────────────────────────────────────────────────
+function EditGameModal({ game, events, onClose, onSave }) {
+  const [f, setF] = useState({...game});
+  return <Modal onClose={onClose} maxWidth={460}>
+    <h3 style={{color:C.navy,marginBottom:14}}>Edit Game</h3>
+    <div style={{display:"grid",gap:10}}>
+      <div><Label>Opponent</Label><TextInput value={f.opponent} onChange={e=>setF({...f,opponent:e.target.value})} placeholder="Team name"/></div>
+      <div><Label>Date & Time</Label><TextInput type="datetime-local" value={f.date} onChange={e=>setF({...f,date:e.target.value})}/></div>
+      <div><Label>Location</Label><TextInput value={f.location||""} onChange={e=>setF({...f,location:e.target.value})} placeholder="Field/City"/></div>
+      <div><Label>Home / Away</Label><Dropdown value={f.homeAway} onChange={e=>setF({...f,homeAway:e.target.value})}><option value="home">Home</option><option value="away">Away</option></Dropdown></div>
+      <div><Label>Event</Label>
+        <Dropdown value={f.eventId||""} onChange={e=>setF({...f,eventId:e.target.value})}>
+          <option value="">— No Event —</option>
+          {events.map(ev=><option key={ev.id} value={ev.id}>{ev.name}</option>)}
+        </Dropdown>
+      </div>
+    </div>
+    <div style={{display:"flex",gap:8,marginTop:16}}>
+      <Btn onClick={()=>{if(f.opponent)onSave(f);}}>Save</Btn>
+      <Btn variant="outline" onClick={onClose}>Cancel</Btn>
+    </div>
+  </Modal>;
+}
+
+// ── Add Team / Season ─────────────────────────────────────────────────────
+function AddTeamModal({ onClose, onAdd }) {
+  const [name, setName] = useState("");
+  return <Modal onClose={onClose} maxWidth={380}>
+    <h3 style={{color:C.navy,marginBottom:14}}>Add Team</h3>
+    <Label>Team Name</Label>
+    <TextInput value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. SNFC 2013 Boys"/>
+    <div style={{display:"flex",gap:8,marginTop:14}}>
+      <Btn onClick={()=>{if(name)onAdd({id:uid(),name});}}>Add</Btn>
+      <Btn variant="outline" onClick={onClose}>Cancel</Btn>
+    </div>
+  </Modal>;
+}
+
+function AddSeasonModal({ teamId, onClose, onAdd }) {
+  const [name, setName] = useState("");
+  return <Modal onClose={onClose} maxWidth={380}>
+    <h3 style={{color:C.navy,marginBottom:14}}>Add Season</h3>
+    <Label>Season Name</Label>
+    <TextInput value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Spring 2026"/>
+    <div style={{display:"flex",gap:8,marginTop:14}}>
+      <Btn onClick={()=>{if(name)onAdd({id:uid(),teamId,name});}}>Add</Btn>
+      <Btn variant="outline" onClick={onClose}>Cancel</Btn>
+    </div>
+  </Modal>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
