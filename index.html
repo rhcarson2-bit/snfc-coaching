@@ -206,7 +206,11 @@ function App() {
   useEffect(() => { if(initialized.current) syncWrite("players", players); }, [players]);
 
   useEffect(() => {
-    if(selTeam) { const ss=seasons.filter(s=>s.teamId===selTeam); setSelSeason(ss.length?ss[ss.length-1].id:null); }
+    if (selTeam) {
+      const ss = teamSeasons;
+      const current = ss.find(s => s.isCurrent);
+      setSelSeason(current ? current.id : ss.length ? ss[ss.length-1].id : null);
+    }
   }, [selTeam]);
 
   const teamSeasons = seasons.filter(s=>s.teamId===selTeam);
@@ -742,11 +746,12 @@ function PlayerAnalytics({ games, allGames, players, seasons }) {
   // All-time leaderboard
   const leaders = stat => [...players].map(p=>({p,val:statSum(p.id,stat,games)})).filter(x=>x.val>0).sort((a,b)=>b.val-a.val).slice(0,5);
 
-  // Goals per game (min 3 appearances)
-  const gpg = [...players].map(p=>{
-    const g=statSum(p.id,"goals",games), apps=appearedIn(p.id,games);
-    return {p, goals:g, apps, rate:apps>=3?Math.round(g/apps*100)/100:null};
-  }).filter(x=>x.rate!==null).sort((a,b)=>b.rate-a.rate);
+  // Goals per game (all players, uses total games in scope)
+  const totalGames = games.length || 1;
+  const gpg = [...players].map(p => {
+    const g = statSum(p.id,"goals",games);
+    return {p, goals:g, rate: g > 0 ? Math.round(g/totalGames*100)/100 : 0};
+  }).filter(x => x.goals > 0).sort((a,b) => b.rate - a.rate);
 
   // Starting % and captain frequency
   const startCap = [...players].map(p=>{
