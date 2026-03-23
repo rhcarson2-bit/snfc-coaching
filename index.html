@@ -168,6 +168,7 @@ function App() {
   const [playerModal, setPlayerModal] = useState(null);
   const [showAddTeam, setShowAddTeam] = useState(false);
   const [showAddSeason, setShowAddSeason] = useState(false);
+  const [editSeasonModal, setEditSeasonModal] = useState(null);
   const initialized = useRef(false);
 
   // Subscribe to Firebase on mount
@@ -274,9 +275,10 @@ function App() {
       {selTeam && <>
         <Dropdown value={selSeason||""} onChange={e=>setSelSeason(e.target.value)} style={{width:145,fontSize:12}}>
           <option value="">— Season —</option>
-          {teamSeasons.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+          {teamSeasons.map(s=><option key={s.id} value={s.id}>{s.isCurrent?"⚡ ":""}{s.name}</option>)}
         </Dropdown>
         <Btn sm variant="red" onClick={()=>setShowAddSeason(true)} style={{border:"none"}}>+ Season</Btn>
+          <Btn sm variant="outline" onClick={()=>{ const s=teamSeasons.find(x=>x.id===selSeason); if(s) setEditSeasonModal(s); }} style={{color:"#fff",borderColor:"rgba(255,255,255,.5)"}}>✏️</Btn>
       </>}
       <div style={{marginLeft:"auto",display:"flex",gap:4,flexWrap:"wrap"}}>
         {TABS.map(t=><Btn key={t.id} sm onClick={()=>setTab(t.id)} style={{background:tab===t.id?C.red:"transparent",color:"#fff",border:tab===t.id?"none":"1px solid rgba(255,255,255,.3)"}}>{t.label}</Btn>)}
@@ -292,12 +294,14 @@ function App() {
       {selTeam && selSeason && tab==="dashboard" && <Dashboard games={seasonGames} events={seasonEvents} players={teamPlayers} season={seasons.find(s=>s.id===selSeason)} onOpenGame={openGame} onOpenPlayer={openPlayer}/>}
       {selTeam && selSeason && tab==="schedule" && <Schedule games={seasonGames} events={seasonEvents} seasonId={selSeason} setGames={setGames} setEvents={setEvents} onOpenGame={openGame}/>}
       {selTeam && selSeason && tab==="roster" && <Roster players={teamPlayers} games={seasonGames} teamId={selTeam} setPlayers={setPlayers} onOpenPlayer={openPlayer}/>}
-      {selTeam && tab==="report" && <Report players={teamPlayers} games={allTeamGames}/>}
+      {selTeam && tab==="report" && <Report players={teamPlayers} games={allTeamGames} seasons={teamSeasons} selTeam={selTeam} selSeason={selSeason}/>}
       {selTeam && tab==="trophies" && <TrophyRoom events={events} seasons={seasons} selTeam={selTeam}/>}
     </div>
 
     {showAddTeam && <AddTeamModal onClose={()=>setShowAddTeam(false)} onAdd={t=>{setTeams(p=>[...p,t]);setSelTeam(t.id);setShowAddTeam(false);}}/>}
     {showAddSeason && selTeam && <AddSeasonModal teamId={selTeam} onClose={()=>setShowAddSeason(false)} onAdd={s=>{setSeasons(p=>[...p,s]);setSelSeason(s.id);setShowAddSeason(false);}}/>}
+    {editSeasonModal && <EditSeasonModal season={editSeasonModal} onClose={()=>setEditSeasonModal(null)}
+      onSave={s=>{ setSeasons(p=>p.map(x=>x.id===s.id?s: s.isCurrent?{...x,isCurrent:false}:x)); setEditSeasonModal(null); }}/>}
     {gameModal && <GameModal game={gameModal} players={teamPlayers} events={seasonEvents} onClose={()=>setGameModal(null)} onSave={saveGame} onDelete={deleteGame}/>}
     {playerModal && <PlayerModal player={playerModal} games={seasonGames} onClose={()=>setPlayerModal(null)}/>}
   </div>;
@@ -503,26 +507,348 @@ function Roster({ players, games, teamId, setPlayers, onOpenPlayer }) {
 }
 
 // ── Report ────────────────────────────────────────────────────────────────
-function Report({ players, games }) {
-  const played = games.filter(g=>g.played);
-  const getPos = pid => [...new Set(played.flatMap(g=>{const f=(g.fieldPositions||[]).find(x=>x.pid===pid);return f&&f.role?[f.role]:[];}))];
-  const starts = pid => played.filter(g=>(g.playerStats||[]).find(p=>p.pid===pid&&p.started)).length;
-  const caps = pid => played.filter(g=>(g.playerStats||[]).find(p=>p.pid===pid&&p.captain)).length;
+function Report({ players, games, seasons, selTeam, selSeason }) {
+  const teamSeasons = seasons.filter(s=>s.teamId===selTeam);
+  const currentSeason = teamSeasons.find(s=>s.isCurrent) || teamSeasons.find(s=>s.id===selSeason);
+
+  // Filter state
+  const [mode, setMode] = useState("current"); // "current" | "alltime" | "season"
+  const [filterSeason, setFilterSeason] = useState(selSeason||"");
+  const [filterEventType, setFilterEventType] = useState("all");
+  const [reportTab, setReportTab] = useState("team");
+
+  const getFilteredGames = () => {
+    let g = games.filter(x=>x.played);
+    if (mode==="current" && currentSeason) g = g.filter(x=>x.seasonId===currentSeason.id);
+    else if (mode==="season" && filterSeason) g = g.filter(x=>x.seasonId===filterSeason);
+    return g;
+  };
+  const filteredGames = getFilteredGames();
+
+  const btnStyle = active => ({
+    padding:"5px 12px", fontSize:12, fontWeight:700, borderRadius:6, cursor:"pointer",
+    border:`2px solid ${C.navy}`, background:active?C.navy:"transparent", color:active?"#fff":C.navy, fontFamily:"inherit"
+  });
+
   return <div>
-    <h2 style={{color:C.navy,marginBottom:14,fontWeight:800}}>Player Summary Report</h2>
+    <h2 style={{color:C.navy,marginBottom:14,fontWeight:800}}>Analytics</h2>
+
+    {/* Filter bar */}
+    <Card style={{marginBottom:14,padding:12}}>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+        <span style={{fontSize:12,fontWeight:700,color:C.grayDark,textTransform:"uppercase"}}>Scope:</span>
+        <button style={btnStyle(mode==="current")} onClick={()=>setMode("current")}>⚡ Current Season</button>
+        <button style={btnStyle(mode==="alltime")} onClick={()=>setMode("alltime")}>All Time</button>
+        <button style={btnStyle(mode==="season")} onClick={()=>setMode("season")}>Single Season</button>
+        {mode==="season" && (
+          <select value={filterSeason} onChange={e=>setFilterSeason(e.target.value)}
+            style={{padding:"5px 8px",border:`1.5px solid ${C.grayMid}`,borderRadius:6,fontSize:13,fontFamily:"inherit"}}>
+            <option value="">— Pick season —</option>
+            {teamSeasons.map(s=><option key={s.id} value={s.id}>{s.name}{s.isCurrent?" ⚡":""}</option>)}
+          </select>
+        )}
+        <span style={{fontSize:12,fontWeight:700,color:C.grayDark,textTransform:"uppercase",marginLeft:8}}>Event Type:</span>
+        <select value={filterEventType} onChange={e=>setFilterEventType(e.target.value)}
+          style={{padding:"5px 8px",border:`1.5px solid ${C.grayMid}`,borderRadius:6,fontSize:13,fontFamily:"inherit"}}>
+          <option value="all">All</option>
+          {["Tournament","League","Cup","Friendly"].map(t=><option key={t} value={t}>{t}</option>)}
+        </select>
+        <span style={{marginLeft:"auto",fontSize:12,color:C.grayDark}}>
+          {filteredGames.length} game{filteredGames.length!==1?"s":""} in scope
+        </span>
+      </div>
+    </Card>
+
+    {/* Sub-tabs */}
+    <div style={{display:"flex",gap:6,marginBottom:14}}>
+      <button style={btnStyle(reportTab==="team")} onClick={()=>setReportTab("team")}>📊 Team Analytics</button>
+      <button style={btnStyle(reportTab==="player")} onClick={()=>setReportTab("player")}>👤 Player Analytics</button>
+    </div>
+
+    {reportTab==="team" && <TeamAnalytics games={filteredGames} allGames={games.filter(x=>x.played)} seasons={teamSeasons} mode={mode}/>}
+    {reportTab==="player" && <PlayerAnalytics games={filteredGames} allGames={games.filter(x=>x.played)} players={players} seasons={teamSeasons}/>}
+  </div>;
+}
+
+// ── Team Analytics ────────────────────────────────────────────────────────
+function TeamAnalytics({ games, allGames, seasons, mode }) {
+  const wins = g => g.goalsFor > g.goalsAgainst;
+  const losses = g => g.goalsFor < g.goalsAgainst;
+  const draws = g => g.goalsFor === g.goalsAgainst;
+
+  // Season by season record
+  const seasonRows = seasons.map(s=>{
+    const sg = allGames.filter(g=>g.seasonId===s.id);
+    const w=sg.filter(wins).length, l=sg.filter(losses).length, d=sg.filter(draws).length;
+    const gf=sg.reduce((a,g)=>a+(g.goalsFor||0),0), ga=sg.reduce((a,g)=>a+(g.goalsAgainst||0),0);
+    const cs=sg.filter(g=>g.goalsAgainst===0).length;
+    return {name:s.name, isCurrent:s.isCurrent, played:sg.length, w, l, d, gf, ga, diff:gf-ga, cs};
+  }).filter(r=>r.played>0);
+
+  // Home vs away
+  const homeG = games.filter(g=>g.homeAway==="home");
+  const awayG = games.filter(g=>g.homeAway==="away");
+  const rec = g => ({w:g.filter(wins).length, l:g.filter(losses).length, d:g.filter(draws).length, gf:g.reduce((a,x)=>a+(x.goalsFor||0),0), ga:g.reduce((a,x)=>a+(x.goalsAgainst||0),0)});
+  const homeRec=rec(homeG), awayRec=rec(awayG);
+
+  // Goals by half
+  const h1f=games.reduce((a,g)=>a+(g.h1For||0),0), h2f=games.reduce((a,g)=>a+(g.h2For||0),0);
+  const h1a=games.reduce((a,g)=>a+(g.h1Against||0),0), h2a=games.reduce((a,g)=>a+(g.h2Against||0),0);
+  const maxHalf = Math.max(h1f,h2f,h1a,h2a,1);
+  const bar = (val,color) => <div style={{display:"flex",alignItems:"center",gap:6}}>
+    <div style={{width:`${Math.round(val/maxHalf*120)}px`,height:14,background:color,borderRadius:3,minWidth:4}}/>
+    <span style={{fontSize:12,fontWeight:700}}>{val}</span>
+  </div>;
+
+  // Clean sheets & notable results
+  const cleanSheets = games.filter(g=>g.goalsAgainst===0).length;
+  const bigWin = [...games].filter(wins).sort((a,b)=>(b.goalsFor-b.goalsAgainst)-(a.goalsFor-a.goalsAgainst))[0];
+  const bigLoss = [...games].filter(losses).sort((a,b)=>(b.goalsAgainst-b.goalsFor)-(a.goalsAgainst-a.goalsFor))[0];
+
+  // Win rate by formation
+  const fmtMap = {};
+  games.forEach(g=>{
+    const f=g.formation||"Unknown";
+    if(!fmtMap[f]) fmtMap[f]={f,w:0,l:0,d:0,played:0};
+    fmtMap[f].played++;
+    if(wins(g)) fmtMap[f].w++;
+    else if(losses(g)) fmtMap[f].l++;
+    else fmtMap[f].d++;
+  });
+  const fmtRows = Object.values(fmtMap).sort((a,b)=>b.played-a.played);
+
+  // Opponent history
+  const oppMap = {};
+  games.forEach(g=>{
+    const opp=g.opponent||"Unknown";
+    if(!oppMap[opp]) oppMap[opp]={opp,w:0,l:0,d:0,gf:0,ga:0};
+    oppMap[opp].gf+=(g.goalsFor||0); oppMap[opp].ga+=(g.goalsAgainst||0);
+    if(wins(g)) oppMap[opp].w++;
+    else if(losses(g)) oppMap[opp].l++;
+    else oppMap[opp].d++;
+  });
+  const oppRows = Object.values(oppMap).sort((a,b)=>(b.w+b.d+b.l)-(a.w+a.d+a.l));
+
+  const sectionHead = title => <h3 style={{color:C.navy,fontSize:15,fontWeight:800,marginBottom:10,marginTop:4}}>{title}</h3>;
+
+  return <div style={{display:"grid",gap:14}}>
+    {/* Season by season */}
     <Card>
-      {players.length===0 && <p style={{color:C.grayDark,fontSize:13}}>No players on roster.</p>}
+      {sectionHead("📅 Season-by-Season Record")}
       <div style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-          <thead><tr><TH>#</TH><TH>Player</TH><TH center>Started</TH><TH>Positions Played</TH><TH center>Captain</TH></tr></thead>
-          <tbody>{[...players].sort((a,b)=>a.number-b.number).map(p=><tr key={p.id}>
-            <TD><strong>{p.number}</strong></TD><TD>{p.name}</TD>
-            <TD center>{starts(p.id)}</TD>
-            <TD>{getPos(p.id).join(", ")||<span style={{color:C.grayDark}}>—</span>}</TD>
-            <TD center>{caps(p.id)}</TD>
+          <thead><tr><TH>Season</TH><TH center>P</TH><TH center>W</TH><TH center>L</TH><TH center>D</TH><TH center>GF</TH><TH center>GA</TH><TH center>+/-</TH><TH center>Clean Sheets</TH></tr></thead>
+          <tbody>{seasonRows.map(r=><tr key={r.name} style={{background:r.isCurrent?"#e8edf7":""}}>
+            <TD><strong>{r.name}</strong>{r.isCurrent&&<span style={{marginLeft:6,fontSize:11,color:C.red,fontWeight:700}}>⚡ Current</span>}</TD>
+            <TD center>{r.played}</TD><TD center>{r.w}</TD><TD center>{r.l}</TD><TD center>{r.d}</TD>
+            <TD center>{r.gf}</TD><TD center>{r.ga}</TD>
+            <TD center style={{color:r.diff>0?"#155724":r.diff<0?"#721c24":C.grayDark,fontWeight:700}}>{r.diff>0?"+":""}{r.diff}</TD>
+            <TD center>{r.cs}</TD>
           </tr>)}</tbody>
         </table>
       </div>
+    </Card>
+
+    {/* Home vs Away + Goals by half */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+      <Card>
+        {sectionHead("🏠 Home vs. Away")}
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <thead><tr><TH></TH><TH center>P</TH><TH center>W</TH><TH center>L</TH><TH center>D</TH><TH center>GF</TH><TH center>GA</TH></tr></thead>
+          <tbody>
+            <tr><TD><strong>🏠 Home</strong></TD><TD center>{homeG.length}</TD><TD center>{homeRec.w}</TD><TD center>{homeRec.l}</TD><TD center>{homeRec.d}</TD><TD center>{homeRec.gf}</TD><TD center>{homeRec.ga}</TD></tr>
+            <tr><TD><strong>✈️ Away</strong></TD><TD center>{awayG.length}</TD><TD center>{awayRec.w}</TD><TD center>{awayRec.l}</TD><TD center>{awayRec.d}</TD><TD center>{awayRec.gf}</TD><TD center>{awayRec.ga}</TD></tr>
+          </tbody>
+        </table>
+      </Card>
+      <Card>
+        {sectionHead("⏱ Goals by Half")}
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <thead><tr><TH></TH><TH>1st Half</TH><TH>2nd Half</TH></tr></thead>
+          <tbody>
+            <tr><TD><strong>Scored</strong></TD><TD>{bar(h1f,"#155724")}</TD><TD>{bar(h2f,"#155724")}</TD></tr>
+            <tr><TD><strong>Conceded</strong></TD><TD>{bar(h1a,C.red)}</TD><TD>{bar(h2a,C.red)}</TD></tr>
+          </tbody>
+        </table>
+      </Card>
+    </div>
+
+    {/* Clean sheets & notable results */}
+    <Card>
+      {sectionHead("🧤 Clean Sheets & Notable Results")}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12}}>
+        <div style={{background:C.gray,borderRadius:8,padding:14,textAlign:"center"}}>
+          <div style={{fontSize:28,fontWeight:800,color:C.navy}}>{cleanSheets}</div>
+          <div style={{fontSize:12,color:C.grayDark,fontWeight:600}}>Clean Sheets</div>
+        </div>
+        {bigWin && <div style={{background:"#d4edda",borderRadius:8,padding:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#155724",marginBottom:4}}>🏆 BIGGEST WIN</div>
+          <div style={{fontWeight:800,color:"#155724"}}>vs {bigWin.opponent}</div>
+          <div style={{fontSize:20,fontWeight:800,color:"#155724"}}>{bigWin.goalsFor}–{bigWin.goalsAgainst}</div>
+          <div style={{fontSize:11,color:"#155724"}}>{bigWin.date?new Date(bigWin.date).toLocaleDateString():""}</div>
+        </div>}
+        {bigLoss && <div style={{background:"#f8d7da",borderRadius:8,padding:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#721c24",marginBottom:4}}>📉 BIGGEST LOSS</div>
+          <div style={{fontWeight:800,color:"#721c24"}}>vs {bigLoss.opponent}</div>
+          <div style={{fontSize:20,fontWeight:800,color:"#721c24"}}>{bigLoss.goalsFor}–{bigLoss.goalsAgainst}</div>
+          <div style={{fontSize:11,color:"#721c24"}}>{bigLoss.date?new Date(bigLoss.date).toLocaleDateString():""}</div>
+        </div>}
+      </div>
+    </Card>
+
+    {/* Formation win rate */}
+    <Card>
+      {sectionHead("🗂 Win Rate by Formation")}
+      {fmtRows.length===0 && <p style={{color:C.grayDark,fontSize:13}}>No formation data yet.</p>}
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <thead><tr><TH>Formation</TH><TH center>Played</TH><TH center>W</TH><TH center>L</TH><TH center>D</TH><TH center>Win %</TH></tr></thead>
+          <tbody>{fmtRows.map(r=><tr key={r.f}>
+            <TD><strong>{r.f}</strong></TD><TD center>{r.played}</TD><TD center>{r.w}</TD><TD center>{r.l}</TD><TD center>{r.d}</TD>
+            <TD center><span style={{fontWeight:700,color:r.w/r.played>=.5?"#155724":C.red}}>{Math.round(r.w/r.played*100)}%</span></TD>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </Card>
+
+    {/* Opponent history */}
+    <Card>
+      {sectionHead("🆚 Opponent History")}
+      {oppRows.length===0 && <p style={{color:C.grayDark,fontSize:13}}>No games yet.</p>}
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <thead><tr><TH>Opponent</TH><TH center>P</TH><TH center>W</TH><TH center>L</TH><TH center>D</TH><TH center>GF</TH><TH center>GA</TH><TH center>+/-</TH></tr></thead>
+          <tbody>{oppRows.map(r=><tr key={r.opp}>
+            <TD><strong>{r.opp}</strong></TD>
+            <TD center>{r.w+r.l+r.d}</TD><TD center>{r.w}</TD><TD center>{r.l}</TD><TD center>{r.d}</TD>
+            <TD center>{r.gf}</TD><TD center>{r.ga}</TD>
+            <TD center style={{fontWeight:700,color:r.gf-r.ga>0?"#155724":r.gf-r.ga<0?"#721c24":C.grayDark}}>{r.gf-r.ga>0?"+":""}{r.gf-r.ga}</TD>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </Card>
+  </div>;
+}
+
+// ── Player Analytics ──────────────────────────────────────────────────────
+function PlayerAnalytics({ games, allGames, players, seasons }) {
+  const statSum = (pid,stat,gs) => gs.reduce((a,g)=>{const ps=(g.playerStats||[]).find(p=>p.pid===pid);return a+(ps?ps[stat]||0:0);},0);
+  const startCount = (pid,gs) => gs.filter(g=>(g.playerStats||[]).find(p=>p.pid===pid&&p.started)).length;
+  const capCount = (pid,gs) => gs.filter(g=>(g.playerStats||[]).find(p=>p.pid===pid&&p.captain)).length;
+  const appearedIn = (pid,gs) => gs.filter(g=>(g.playerStats||[]).find(p=>p.pid===pid&&(p.started||p.goals||p.assists))).length;
+
+  const sectionHead = title => <h3 style={{color:C.navy,fontSize:15,fontWeight:800,marginBottom:10,marginTop:4}}>{title}</h3>;
+
+  // All-time leaderboard
+  const leaders = stat => [...players].map(p=>({p,val:statSum(p.id,stat,games)})).filter(x=>x.val>0).sort((a,b)=>b.val-a.val).slice(0,5);
+
+  // Goals per game (min 3 appearances)
+  const gpg = [...players].map(p=>{
+    const g=statSum(p.id,"goals",games), apps=appearedIn(p.id,games);
+    return {p, goals:g, apps, rate:apps>=3?Math.round(g/apps*100)/100:null};
+  }).filter(x=>x.rate!==null).sort((a,b)=>b.rate-a.rate);
+
+  // Starting % and captain frequency
+  const startCap = [...players].map(p=>{
+    const st=startCount(p.id,games), cap=capCount(p.id,games), apps=appearedIn(p.id,games)||1;
+    return {p, starts:st, caps:cap, startPct:Math.round(st/games.length*100), capPct:Math.round(cap/games.length*100)};
+  }).filter(x=>x.starts>0||x.caps>0).sort((a,b)=>b.starts-a.starts);
+
+  // Season-by-season stat lines
+  const seasonLines = players.map(p=>{
+    const rows = seasons.map(s=>{
+      const sg = allGames.filter(g=>g.seasonId===s.id);
+      return {season:s.name, isCurrent:s.isCurrent, goals:statSum(p.id,"goals",sg), assists:statSum(p.id,"assists",sg), yc:statSum(p.id,"yellowCards",sg), rc:statSum(p.id,"redCards",sg), starts:startCount(p.id,sg), caps:capCount(p.id,sg), apps:appearedIn(p.id,sg)};
+    }).filter(r=>r.apps>0||r.starts>0);
+    return {p, rows};
+  }).filter(x=>x.rows.length>0);
+
+  return <div style={{display:"grid",gap:14}}>
+    {/* All-time leaders */}
+    <Card>
+      {sectionHead("🏆 Leaders")}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12}}>
+        {[["⚽ Goals","goals"],["🎯 Assists","assists"],["🟨 Yellow","yellowCards"],["🟥 Red","redCards"]].map(([label,stat])=>(
+          <div key={stat}>
+            <div style={{fontWeight:700,fontSize:13,marginBottom:6,color:C.navy}}>{label}</div>
+            {leaders(stat).length===0 && <div style={{fontSize:12,color:C.grayDark}}>No data</div>}
+            {leaders(stat).map(({p,val},i)=><div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0",borderBottom:`1px solid ${C.grayMid}`,fontSize:13}}>
+              <span style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontWeight:800,color:i===0?C.red:C.grayDark,fontSize:i===0?14:12}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":`${i+1}.`}</span>
+                #{p.number} {p.name}
+              </span>
+              <strong>{val}</strong>
+            </div>)}
+          </div>
+        ))}
+      </div>
+    </Card>
+
+    {/* Goals per game */}
+    <Card>
+      {sectionHead("⚡ Goals Per Game (min. 3 appearances)")}
+      {gpg.length===0 && <p style={{color:C.grayDark,fontSize:13}}>Not enough data yet.</p>}
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <thead><tr><TH>Rank</TH><TH>#</TH><TH>Player</TH><TH center>Goals</TH><TH center>Apps</TH><TH center>Goals/Game</TH></tr></thead>
+          <tbody>{gpg.map(({p,goals,apps,rate},i)=><tr key={p.id}>
+            <TD><strong style={{color:i===0?C.red:C.text}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":`${i+1}`}</strong></TD>
+            <TD><strong>{p.number}</strong></TD><TD>{p.name}</TD>
+            <TD center>{goals}</TD><TD center>{apps}</TD>
+            <TD center><span style={{fontWeight:800,color:rate>=1?C.red:rate>=0.5?"#856404":C.navy}}>{rate.toFixed(2)}</span></TD>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </Card>
+
+    {/* Starting % and captain frequency */}
+    <Card>
+      {sectionHead("🔰 Starting % & Captain Frequency")}
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <thead><tr><TH>#</TH><TH>Player</TH><TH center>Starts</TH><TH center>Start %</TH><TH center>Captain</TH><TH center>Captain %</TH></tr></thead>
+          <tbody>{startCap.map(({p,starts,caps,startPct,capPct})=><tr key={p.id}>
+            <TD><strong>{p.number}</strong></TD><TD>{p.name}</TD>
+            <TD center>{starts}</TD>
+            <TD center>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <div style={{width:40,height:8,background:C.grayMid,borderRadius:4,overflow:"hidden"}}>
+                  <div style={{width:`${startPct}%`,height:"100%",background:C.navy,borderRadius:4}}/>
+                </div>
+                <span style={{fontWeight:700}}>{startPct}%</span>
+              </div>
+            </TD>
+            <TD center>{caps}</TD>
+            <TD center>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <div style={{width:40,height:8,background:C.grayMid,borderRadius:4,overflow:"hidden"}}>
+                  <div style={{width:`${capPct}%`,height:"100%",background:C.red,borderRadius:4}}/>
+                </div>
+                <span style={{fontWeight:700}}>{capPct}%</span>
+              </div>
+            </TD>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </Card>
+
+    {/* Season-by-season stat lines */}
+    <Card>
+      {sectionHead("📋 Season-by-Season Stat Lines")}
+      {seasonLines.length===0 && <p style={{color:C.grayDark,fontSize:13}}>No data yet.</p>}
+      {seasonLines.map(({p,rows})=><div key={p.id} style={{marginBottom:16}}>
+        <div style={{fontWeight:700,fontSize:14,color:C.navy,marginBottom:6}}>#{p.number} {p.name}</div>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead><tr><TH>Season</TH><TH center>Apps</TH><TH center>Starts</TH><TH center>Goals</TH><TH center>Assists</TH><TH center>🟨</TH><TH center>🟥</TH><TH center>Captain</TH></tr></thead>
+            <tbody>{rows.map(r=><tr key={r.season} style={{background:r.isCurrent?"#e8edf7":""}}>
+              <TD><strong>{r.season}</strong>{r.isCurrent&&<span style={{marginLeft:4,fontSize:10,color:C.red}}>⚡</span>}</TD>
+              <TD center>{r.apps}</TD><TD center>{r.starts}</TD><TD center>{r.goals}</TD>
+              <TD center>{r.assists}</TD><TD center>{r.yc}</TD><TD center>{r.rc}</TD><TD center>{r.caps}</TD>
+            </tr>)}</tbody>
+          </table>
+        </div>
+      </div>)}
     </Card>
   </div>;
 }
@@ -789,6 +1115,24 @@ function EditGameModal({ game, events, onClose, onSave }) {
 }
 
 // ── Add Team / Season ─────────────────────────────────────────────────────
+function EditSeasonModal({ season, onClose, onSave }) {
+  const [f, setF] = useState({...season});
+  return <Modal onClose={onClose} maxWidth={380}>
+    <h3 style={{color:C.navy,marginBottom:14}}>Edit Season</h3>
+    <Label>Season Name</Label>
+    <TextInput value={f.name} onChange={e=>setF({...f,name:e.target.value})} placeholder="e.g. Spring 2026"/>
+    <div style={{display:"flex",alignItems:"center",gap:10,marginTop:12,padding:"10px 12px",background:C.gray,borderRadius:8}}>
+      <input type="checkbox" id="currentFlag" checked={!!f.isCurrent} onChange={e=>setF({...f,isCurrent:e.target.checked})} style={{width:16,height:16,cursor:"pointer"}}/>
+      <label htmlFor="currentFlag" style={{fontSize:14,fontWeight:600,cursor:"pointer",color:C.navy}}>⚡ Mark as Current Season</label>
+    </div>
+    <p style={{fontSize:11,color:C.grayDark,marginTop:6,marginLeft:2}}>Marking this as current will unmark any other current season for this team.</p>
+    <div style={{display:"flex",gap:8,marginTop:16}}>
+      <Btn onClick={()=>{if(f.name)onSave(f);}}>Save</Btn>
+      <Btn variant="outline" onClick={onClose}>Cancel</Btn>
+    </div>
+  </Modal>;
+}
+
 function AddTeamModal({ onClose, onAdd }) {
   const [name, setName] = useState("");
   return <Modal onClose={onClose} maxWidth={380}>
