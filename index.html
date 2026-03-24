@@ -61,10 +61,10 @@ const PLACES = ["Champion","Runner-Up","3rd Place","4th Place","Semifinal","Quar
 const uid = () => Math.random().toString(36).slice(2);
 
 function fpos(fmt, cnt) {
-  const lines = fmt.split("-").map(Number), W=400, H=580, roles=["DEF","MID","ATT","FWD"];
-  const p = [{x:W/2, y:H-45, role:"GK"}];
+  const lines = fmt.split("-").map(Number), W=400, H=520, roles=["DEF","MID","ATT","FWD"];
+  const p = [{x:W/2, y:H-40, role:"GK"}];
   lines.forEach((n,li) => {
-    const yf = 0.78-(li/lines.length)*0.62;
+    const yf = 0.75-(li/lines.length)*0.60;
     for(let i=0;i<n;i++) p.push({x:((i+1)/(n+1))*W, y:yf*H, role:roles[Math.min(li,3)]});
   });
   return p.slice(0, cnt+1);
@@ -130,10 +130,9 @@ function EmptyState({message, actionLabel, onAction}) {
 function SoccerField({fieldPos, getPlayer, onDrop, onDragStart, onTapSlot, selectedSlot}) {
   const W=400, H=520;
   return (
-    <div onDragOver={e=>e.preventDefault()}
-      style={{position:"relative",width:"100%",background:"#2e7d32",borderRadius:8,
-        userSelect:"none",aspectRatio:"400/520",maxHeight:"60vh"}}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{position:"absolute",inset:0,width:"100%",height:"100%"}}>
+    <div style={{position:"relative",width:"100%",background:"#2e7d32",borderRadius:8,userSelect:"none"}}
+      onDragOver={e=>e.preventDefault()}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{display:"block",width:"100%",height:"auto",maxHeight:"55vh"}}>
         <rect x="20" y="15" width="360" height="490" fill="none" stroke="rgba(255,255,255,.6)" strokeWidth="2"/>
         <line x1="20" y1="260" x2="380" y2="260" stroke="rgba(255,255,255,.5)" strokeWidth="1.5"/>
         <circle cx="200" cy="260" r="38" fill="none" stroke="rgba(255,255,255,.5)" strokeWidth="1.5"/>
@@ -142,36 +141,63 @@ function SoccerField({fieldPos, getPlayer, onDrop, onDragStart, onTapSlot, selec
         <rect x="140" y="15" width="120" height="32" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="1"/>
         <rect x="100" y="440" width="200" height="65" fill="none" stroke="rgba(255,255,255,.5)" strokeWidth="1.5"/>
         <rect x="140" y="480" width="120" height="32" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="1"/>
+        {/* Jersey tokens rendered inside SVG for correct scaling */}
+        {(fieldPos||[]).map((fp, i) => {
+          const p = getPlayer(fp.pid);
+          const isSelected = selectedSlot === i;
+          return (
+            <g key={i} onClick={() => onTapSlot(i)} style={{cursor:"pointer"}}
+              onDragOver={e=>e.preventDefault()}
+              onDrop={e=>onDrop(e,i)}>
+              {p ? (
+                <g draggable onDragStart={e=>onDragStart(e,i)}>
+                  <path d={`M${fp.x-14},${fp.y-12} L${fp.x-10},${fp.y-16} Q${fp.x},${fp.y-18} ${fp.x+10},${fp.y-16} L${fp.x+14},${fp.y-12} L${fp.x+18},${fp.y-4} L${fp.x+10},${fp.y-2} L${fp.x+10},${fp.y+14} L${fp.x-10},${fp.y+14} L${fp.x-10},${fp.y-2} L${fp.x-18},${fp.y-4} Z`}
+                    fill={isSelected?"#c8102e":"#0a1f44"} stroke={isSelected?"#fff":"#c8102e"} strokeWidth="1.5"/>
+                  <text x={fp.x} y={fp.y+6} textAnchor="middle" fill="#fff" fontSize="10" fontWeight="bold">{p.number}</text>
+                  <text x={fp.x} y={fp.y+24} textAnchor="middle" fill="#fff" fontSize="7" fontWeight="600"
+                    style={{textShadow:"0 1px 2px rgba(0,0,0,.8)"}}>{p.name.split(" ")[0].slice(0,8)}</text>
+                </g>
+              ) : (
+                <g>
+                  <rect x={fp.x-16} y={fp.y-16} width="32" height="32" rx="4"
+                    fill={isSelected?"rgba(255,255,255,.3)":"rgba(0,0,0,.2)"}
+                    stroke={isSelected?"#fff":"rgba(255,255,255,.5)"}
+                    strokeWidth={isSelected?3:2} strokeDasharray={isSelected?"none":"4,3"}/>
+                  <text x={fp.x} y={fp.y+5} textAnchor="middle" fill="rgba(255,255,255,.9)" fontSize="14" fontWeight="bold">
+                    {isSelected?"●":"+"}
+                  </text>
+                </g>
+              )}
+            </g>
+          );
+        })}
       </svg>
-      {fieldPos.map((fp, i) => {
-        const p = getPlayer(fp.pid);
-        const isSelected = selectedSlot === i;
-        return (
-          <div key={i}
-            draggable={!!fp.pid}
-            onDragStart={e => onDragStart(e, i)}
-            onDrop={e => onDrop(e, i)}
-            onDragOver={e => e.preventDefault()}
-            onClick={() => onTapSlot(i)}
-            style={{position:"absolute", left:`${fp.x/W*100}%`, top:`${fp.y/H*100}%`,
-              transform:"translate(-50%,-50%)", zIndex:10, cursor:"pointer",
-              outline: isSelected ? "3px solid #fff" : "none",
-              borderRadius:6}}>
-            {p
-              ? <Jersey number={p.number} size={34} label={p.name.split(" ")[0]}/>
-              : <div style={{width:34, height:34,
-                  border: isSelected ? "3px solid #fff" : "2px dashed rgba(255,255,255,.5)",
-                  borderRadius:4, background: isSelected ? "rgba(255,255,255,.25)" : "rgba(0,0,0,.15)",
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  color:"rgba(255,255,255,.7)", fontSize:16}}>
-                  {isSelected ? "👆" : "+"}
-                </div>
-            }
-          </div>
-        );
-      })}
     </div>
   );
+}
+
+// ── Error Boundary ────────────────────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = {error:null, info:null}; }
+  componentDidCatch(error, info) { this.setState({error, info}); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{padding:24, fontFamily:"monospace", background:"#fff3f3", border:"2px solid #c8102e", borderRadius:8, margin:16}}>
+          <h2 style={{color:"#c8102e", marginBottom:12}}>⚠️ Render Error</h2>
+          <p style={{fontWeight:700, marginBottom:8}}>{this.state.error.toString()}</p>
+          <pre style={{background:"#fff", padding:12, borderRadius:6, overflowX:"auto", fontSize:11, whiteSpace:"pre-wrap", border:"1px solid #dde2ea"}}>
+            {this.state.info && this.state.info.componentStack}
+          </pre>
+          <button onClick={()=>this.setState({error:null,info:null})}
+            style={{marginTop:12,padding:"8px 16px",background:"#0a1f44",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
+            Try to recover
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 // ── App ───────────────────────────────────────────────────────────────────
@@ -328,7 +354,7 @@ function App() {
     {showAddSeason && selTeam && <AddSeasonModal teamId={selTeam} onClose={()=>setShowAddSeason(false)} onAdd={s=>{setSeasons(p=>[...p,s]);setSelSeason(s.id);setShowAddSeason(false);}}/>}
     {editSeasonModal && <EditSeasonModal season={editSeasonModal} onClose={()=>setEditSeasonModal(null)}
       onSave={s=>{ setSeasons(p=>p.map(x=>x.id===s.id?s: s.isCurrent?{...x,isCurrent:false}:x)); setEditSeasonModal(null); }}/>}
-    {gameModal && <GameModal game={gameModal} players={teamPlayers} events={seasonEvents} onClose={()=>setGameModal(null)} onSave={saveGame} onDelete={deleteGame}/>}
+    {gameModal && <ErrorBoundary><GameModal game={gameModal} players={teamPlayers} events={seasonEvents} onClose={()=>setGameModal(null)} onSave={saveGame} onDelete={deleteGame}/></ErrorBoundary>}
     {playerModal && <PlayerModal player={playerModal} games={seasonGames} onClose={()=>setPlayerModal(null)}/>}
   </div>;
 }
@@ -961,6 +987,8 @@ function GameModal({ game, players, events, onClose, onSave, onDelete }) {
   };
   const [selectedSlot, setSelectedSlot] = useState(null);
 
+  const bench = players.filter(p => !fieldPos.find(x => x.pid === p.id));
+
   const onTapSlot = idx => {
     const fp = fieldPos[idx];
     if (fp.pid) {
@@ -1226,7 +1254,9 @@ function AddSeasonModal({ teamId, onClose, onAdd }) {
   </Modal>;
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <ErrorBoundary><App/></ErrorBoundary>
+);
 </script>
 </body>
 </html>
