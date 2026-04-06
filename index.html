@@ -1200,6 +1200,170 @@ function GameModal({ game, players, events, onClose, onSave, onDelete }) {
   </Modal>;
 }
 
+// ── Matchday Sheet ────────────────────────────────────────────────────────
+function MatchdaySheet({ game, players, events, onClose }) {
+  const ev = events.find(e => e.id === game.eventId);
+  const fmtDate = d => { try { return new Date(d).toLocaleString([], {weekday:"short",month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit"}); } catch { return d||""; } };
+  const captains = (game.playerStats||[]).filter(ps => ps.captain).map(ps => players.find(p => p.id === ps.pid)).filter(Boolean);
+  const starters = (game.playerStats||[]).filter(ps => ps.started).map(ps => players.find(p => p.id === ps.pid)).filter(Boolean);
+  const fieldPos = game.fieldPositions || [];
+  const getPlayer = pid => players.find(p => p.id === pid);
+  const W = 400, H = 520;
+
+  const fieldSVG = (withPlayers) => (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"100%"}}>
+      <rect width={W} height={H} fill="#2e7d32"/>
+      <rect x="20" y="15" width="360" height="490" fill="none" stroke="rgba(255,255,255,.7)" strokeWidth="2"/>
+      <line x1="20" y1="260" x2="380" y2="260" stroke="rgba(255,255,255,.6)" strokeWidth="1.5"/>
+      <circle cx="200" cy="260" r="38" fill="none" stroke="rgba(255,255,255,.6)" strokeWidth="1.5"/>
+      <circle cx="200" cy="260" r="3" fill="rgba(255,255,255,.8)"/>
+      <rect x="100" y="15" width="200" height="65" fill="none" stroke="rgba(255,255,255,.6)" strokeWidth="1.5"/>
+      <rect x="140" y="15" width="120" height="32" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="1"/>
+      <rect x="100" y="440" width="200" height="65" fill="none" stroke="rgba(255,255,255,.6)" strokeWidth="1.5"/>
+      <rect x="140" y="480" width="120" height="32" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="1"/>
+      {withPlayers && fieldPos.map((fp, i) => {
+        const p = getPlayer(fp.pid);
+        if (!p) return (
+          <g key={i}>
+            <rect x={fp.x-14} y={fp.y-14} width="28" height="28" rx="3"
+              fill="rgba(0,0,0,.25)" stroke="rgba(255,255,255,.4)" strokeWidth="1.5" strokeDasharray="3,2"/>
+          </g>
+        );
+        return (
+          <g key={i}>
+            <path d={`M${fp.x-12},${fp.y-10} L${fp.x-8},${fp.y-14} Q${fp.x},${fp.y-16} ${fp.x+8},${fp.y-14} L${fp.x+12},${fp.y-10} L${fp.x+15},${fp.y-3} L${fp.x+8},${fp.y-1} L${fp.x+8},${fp.y+13} L${fp.x-8},${fp.y+13} L${fp.x-8},${fp.y-1} L${fp.x-15},${fp.y-3} Z`}
+              fill="#0a1f44" stroke="#c8102e" strokeWidth="1.5"/>
+            <text x={fp.x} y={fp.y+6} textAnchor="middle" fill="#fff" fontSize="9" fontWeight="bold">{p.number}</text>
+            <text x={fp.x} y={fp.y+22} textAnchor="middle" fill="#fff" fontSize="6.5" fontWeight="600">{p.name.split(" ")[0].slice(0,9)}</text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+
+  const handlePrint = () => window.print();
+
+  return (
+    <div onClick={e=>{if(e.target===e.currentTarget)onClose();}}
+      style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:200,display:"flex",
+        alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:20}}>
+      <div style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:780,padding:24}}>
+
+        {/* Modal controls — hidden on print */}
+        <div className="no-print" style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <h2 style={{color:C.navy,fontWeight:800}}>Matchday Sheet Preview</h2>
+          <div style={{display:"flex",gap:8}}>
+            <Btn onClick={handlePrint} style={{background:"#2e7d32",color:"#fff",border:"none"}}>🖨️ Print</Btn>
+            <Btn variant="outline" onClick={onClose}>✕ Close</Btn>
+          </div>
+        </div>
+
+        {/* ── PRINTABLE CONTENT ── */}
+        <div id="matchday-print" style={{fontFamily:"'Segoe UI',sans-serif",color:"#000"}}>
+
+          {/* Header */}
+          <div style={{borderBottom:"2px solid #0a1f44",paddingBottom:8,marginBottom:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div>
+                <div style={{fontSize:20,fontWeight:800,color:"#0a1f44"}}>SNFC vs {game.opponent}</div>
+                <div style={{fontSize:12,color:"#555",marginTop:2}}>{fmtDate(game.date)}{game.location ? ` · ${game.location}` : ""}{ev ? ` · ${ev.name}` : ""}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#0a1f44",textTransform:"uppercase",letterSpacing:.5}}>Formation</div>
+                <div style={{fontSize:16,fontWeight:800}}>{game.formation||"—"}</div>
+              </div>
+            </div>
+            {captains.length > 0 && (
+              <div style={{marginTop:6,fontSize:12}}>
+                <strong>Captain{captains.length>1?"s":""}:</strong> {captains.map(p=>`#${p.number} ${p.name}`).join(", ")}
+              </div>
+            )}
+          </div>
+
+          {/* Two fields side by side */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+            <div>
+              <div style={{fontSize:11,fontWeight:700,textAlign:"center",marginBottom:4,color:"#0a1f44",textTransform:"uppercase",letterSpacing:.5}}>Starting Formation</div>
+              <div style={{aspectRatio:"400/520",borderRadius:6,overflow:"hidden",border:"1px solid #ccc"}}>
+                {fieldSVG(true)}
+              </div>
+            </div>
+            <div>
+              <div style={{fontSize:11,fontWeight:700,textAlign:"center",marginBottom:4,color:"#0a1f44",textTransform:"uppercase",letterSpacing:.5}}>2nd Half / Substitutions</div>
+              <div style={{aspectRatio:"400/520",borderRadius:6,overflow:"hidden",border:"1px solid #ccc"}}>
+                {fieldSVG(false)}
+              </div>
+            </div>
+          </div>
+
+          {/* Player stats table */}
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,marginBottom:10}}>
+            <thead>
+              <tr style={{background:"#0a1f44",color:"#fff"}}>
+                <th style={{padding:"4px 6px",textAlign:"left",width:24}}>#</th>
+                <th style={{padding:"4px 6px",textAlign:"left"}}>Player</th>
+                <th style={{padding:"4px 6px",textAlign:"center",width:36}}>Goals</th>
+                <th style={{padding:"4px 6px",textAlign:"center",width:36}}>Assists</th>
+                <th style={{padding:"4px 6px",textAlign:"center",width:28}}>🟨</th>
+                <th style={{padding:"4px 6px",textAlign:"center",width:28}}>🟥</th>
+                <th style={{padding:"4px 6px",textAlign:"center",width:28}}>C</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...players].sort((a,b)=>a.number-b.number).map((p,i) => {
+                const ps = (game.playerStats||[]).find(s=>s.pid===p.id)||{};
+                return (
+                  <tr key={p.id} style={{background:i%2===0?"#f8f9fb":"#fff"}}>
+                    <td style={{padding:"4px 6px",fontWeight:700}}>{p.number}</td>
+                    <td style={{padding:"4px 6px"}}>{p.name}{ps.captain?" ©":""}</td>
+                    <td style={{padding:"4px 6px",borderLeft:"1px solid #dde2ea",borderRight:"1px solid #dde2ea"}}>&nbsp;</td>
+                    <td style={{padding:"4px 6px",borderRight:"1px solid #dde2ea"}}>&nbsp;</td>
+                    <td style={{padding:"4px 6px",borderRight:"1px solid #dde2ea",textAlign:"center"}}>&nbsp;</td>
+                    <td style={{padding:"4px 6px",borderRight:"1px solid #dde2ea",textAlign:"center"}}>&nbsp;</td>
+                    <td style={{padding:"4px 6px",textAlign:"center"}}>{ps.captain?"✓":""}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          {/* Notes */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {["1st Half Notes","2nd Half Notes"].map(label=>(
+              <div key={label} style={{border:"1px solid #ccc",borderRadius:6,padding:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#0a1f44",textTransform:"uppercase",letterSpacing:.5,marginBottom:6}}>{label}</div>
+                {[...Array(4)].map((_,i)=>(
+                  <div key={i} style={{borderBottom:"1px solid #dde2ea",height:20,marginBottom:4}}/>
+                ))}
+              </div>
+            ))}
+          </div>
+
+          {/* Score box */}
+          <div style={{marginTop:10,display:"flex",justifyContent:"center",gap:20,borderTop:"2px solid #0a1f44",paddingTop:8}}>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:10,fontWeight:700,textTransform:"uppercase",color:"#555",letterSpacing:.5}}>Final Score</div>
+              <div style={{fontSize:22,fontWeight:800,color:"#0a1f44",letterSpacing:8}}>__ — __</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* Print styles */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          #matchday-print, #matchday-print * { visibility: visible !important; }
+          #matchday-print { position: fixed; inset: 0; padding: 14px; background: #fff; }
+          .no-print { display: none !important; }
+          @page { size: portrait; margin: 8mm; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 // ── Player Modal ──────────────────────────────────────────────────────────
 function PlayerModal({ player, games, onClose }) {
   const played = games.filter(g=>g.played);
