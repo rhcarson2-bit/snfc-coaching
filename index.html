@@ -1110,8 +1110,9 @@ function GameModal({ game, players, events, onClose, onSave, onDelete }) {
           {events.map(ev=><option key={ev.id} value={ev.id}>{ev.name}</option>)}
         </Dropdown>
       </div>
-      <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+      <div style={{marginLeft:"auto",display:"flex",gap:8,flexWrap:"wrap"}}>
         <Btn variant="red" onClick={()=>{if(window.confirm(`Delete vs ${g.opponent}?`))onDelete(g.id);}}>🗑 Delete</Btn>
+        <Btn onClick={()=>setShowMatchday(true)} style={{background:"#2e7d32",color:"#fff",border:"none"}}>🖨️ Matchday</Btn>
         <Btn onClick={()=>onSave({...g,fieldPositions:fieldPos})}>💾 Save</Btn>
       </div>
     </div>
