@@ -15,8 +15,9 @@
 body{font-family:'Segoe UI',sans-serif;background:#f4f6f9;color:#1a2540;}
 input,select,button,textarea{font-family:inherit;}
 @media print{
-  body > *{display:none!important;}
-  #matchday-print{display:block!important;position:fixed;inset:0;padding:12px;background:#fff;}
+  body > *{visibility:hidden;}
+  #matchday-print{visibility:visible;position:fixed;inset:0;padding:12px;background:#fff;}
+  #matchday-print *{visibility:visible;}
   .no-print{display:none!important;}
   @page{size:portrait;margin:8mm;}
 }
@@ -325,7 +326,7 @@ function App(){
     </div>
     {showAddTeam&&<AddTeamModal onClose={()=>setShowAddTeam(false)} onAdd={t=>{setTeams(p=>[...p,t]);setSelTeam(t.id);setShowAddTeam(false);}}/>}
     {showAddSeason&&selTeam&&<AddSeasonModal teamId={selTeam} onClose={()=>setShowAddSeason(false)} onAdd={s=>{setSeasons(p=>[...p,s]);setSelSeason(s.id);setShowAddSeason(false);}}/>}
-    {editSeasonModal&&<EditSeasonModal season={editSeasonModal} onClose={()=>setEditSeasonModal(null)} onSave={s=>{setSeasons(p=>p.map(x=>x.teamId===s.teamId?(x.id===s.id?s:{...x,isCurrent:false}):x));setEditSeasonModal(null);}}/>}
+    {editSeasonModal&&<EditSeasonModal season={editSeasonModal} onClose={()=>setEditSeasonModal(null)} onSave={s=>{setSeasons(p=>p.map(x=>x.teamId===s.teamId?(x.id===s.id?s:{...x,isCurrent:s.isCurrent?false:x.isCurrent}):x));setEditSeasonModal(null);}}/>}
     {gameModal&&<ErrorBoundary><GameModal game={gameModal} players={teamPlayers} events={seasonEvents} onClose={()=>setGameModal(null)} onSave={saveGame} onDelete={deleteGame}/></ErrorBoundary>}
     {playerModal&&<PlayerModal player={playerModal} games={seasonGames} onClose={()=>setPlayerModal(null)}/>}
   </div>;
@@ -834,22 +835,22 @@ function MatchdaySheet({game,players,events,onClose}){
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,marginBottom:10}}>
           <thead><tr style={{background:"#0a1f44",color:"#fff"}}>
             <th style={{padding:"4px 6px",textAlign:"left",width:24}}>#</th>
-            <th style={{padding:"4px 6px",textAlign:"left"}}>Player</th>
-            <th style={{padding:"4px 6px",textAlign:"center",width:40}}>Goals</th>
-            <th style={{padding:"4px 6px",textAlign:"center",width:40}}>Assists</th>
-            <th style={{padding:"4px 6px",textAlign:"center",width:30}}>🟨</th>
-            <th style={{padding:"4px 6px",textAlign:"center",width:30}}>🟥</th>
+            <th style={{padding:"4px 6px",textAlign:"left",width:120}}>Player</th>
+            <th style={{padding:"4px 6px",textAlign:"center",width:36}}>Goals</th>
+            <th style={{padding:"4px 6px",textAlign:"center",width:36}}>Assists</th>
+            <th style={{padding:"4px 6px",textAlign:"center",width:28}}>🟨</th>
+            <th style={{padding:"4px 6px",textAlign:"center",width:28}}>🟥</th>
             <th style={{padding:"4px 6px",textAlign:"center",width:24}}>C</th>
           </tr></thead>
           <tbody>{[...players].sort((a,b)=>a.number-b.number).map((p,i)=>{
             const ps=(game.playerStats||[]).find(s=>s.pid===p.id)||{};
-            return <tr key={p.id} style={{background:i%2===0?"#f8f9fb":"#fff"}}>
-              <td style={{padding:"4px 6px",fontWeight:700}}>{p.number}</td>
-              <td style={{padding:"4px 6px"}}>{p.name}{ps.captain?" ©":""}</td>
-              <td style={{padding:"4px 6px",borderLeft:"1px solid #dde2ea",borderRight:"1px solid #dde2ea"}}>&nbsp;</td>
-              <td style={{padding:"4px 6px",borderRight:"1px solid #dde2ea"}}>&nbsp;</td>
-              <td style={{padding:"4px 6px",borderRight:"1px solid #dde2ea"}}>&nbsp;</td>
-              <td style={{padding:"4px 6px",borderRight:"1px solid #dde2ea"}}>&nbsp;</td>
+            return <tr key={p.id} style={{borderBottom:"1px solid #ccc"}}>
+              <td style={{padding:"4px 6px",fontWeight:700,borderRight:"1px solid #ccc"}}>{p.number}</td>
+              <td style={{padding:"4px 6px",borderRight:"1px solid #ccc",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:120}}>{p.name}{ps.captain?" ©":""}</td>
+              <td style={{padding:"4px 6px",borderRight:"1px solid #ccc",textAlign:"center"}}>&nbsp;</td>
+              <td style={{padding:"4px 6px",borderRight:"1px solid #ccc",textAlign:"center"}}>&nbsp;</td>
+              <td style={{padding:"4px 6px",borderRight:"1px solid #ccc",textAlign:"center"}}>&nbsp;</td>
+              <td style={{padding:"4px 6px",borderRight:"1px solid #ccc",textAlign:"center"}}>&nbsp;</td>
               <td style={{padding:"4px 6px",textAlign:"center"}}>{ps.captain?"✓":""}</td>
             </tr>;
           })}</tbody>
