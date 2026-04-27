@@ -692,7 +692,13 @@ function PlayerAnalytics({games,allGames,players,seasons}){
   const caps=(pid,gs)=>gs.filter(g=>(g.playerStats||[]).find(p=>p.pid===pid&&p.captain)).length;
   const totalGames=games.length||1;
   const leaders=stat=>[...players].map(p=>({p,val:statSum(p.id,stat,games)})).filter(x=>x.val>0).sort((a,b)=>b.val-a.val).slice(0,5);
-  const gpg=[...players].map(p=>({p,goals:statSum(p.id,"goals",games),rate:statSum(p.id,"goals",games)>0?Math.round(statSum(p.id,"goals",games)/totalGames*100)/100:0})).filter(x=>x.goals>0).sort((a,b)=>b.rate-a.rate);
+  const gpg=[...players].map(p=>({
+    p,
+    goals:statSum(p.id,"goals",games),
+    assists:statSum(p.id,"assists",games),
+    rate:statSum(p.id,"goals",games)>0?Math.round(statSum(p.id,"goals",games)/totalGames*100)/100:0,
+    arate:statSum(p.id,"assists",games)>0?Math.round(statSum(p.id,"assists",games)/totalGames*100)/100:0
+  })).filter(x=>x.goals>0||x.assists>0).sort((a,b)=>b.rate-a.rate);
   const startCap=[...players].map(p=>({p,st:starts(p.id,games),cap:caps(p.id,games),stPct:Math.round(starts(p.id,games)/totalGames*100),capPct:Math.round(caps(p.id,games)/totalGames*100)})).filter(x=>x.st>0||x.cap>0).sort((a,b)=>b.st-a.st);
   const seasonLines=players.map(p=>({p,rows:seasons.map(s=>{const sg=allGames.filter(g=>g.seasonId===s.id);return{season:s.name,isCurrent:s.isCurrent,goals:statSum(p.id,"goals",sg),assists:statSum(p.id,"assists",sg),yc:statSum(p.id,"yellowCards",sg),rc:statSum(p.id,"redCards",sg),starts:starts(p.id,sg),caps:caps(p.id,sg)};}).filter(r=>r.starts>0||r.goals>0||r.assists>0)})).filter(x=>x.rows.length>0);
   const SH=({title})=><h3 style={{color:C.navy,fontSize:15,fontWeight:800,marginBottom:10}}>{title}</h3>;
@@ -710,14 +716,18 @@ function PlayerAnalytics({games,allGames,players,seasons}){
         </div>)}
       </div>
     </Card>
-    <Card><SH title="⚡ Goals Per Game"/>
-      {gpg.length===0&&<p style={{color:C.grayDark,fontSize:13}}>No goals scored yet.</p>}
+    <Card><SH title="⚡ Goals & Assists Per Game"/>
+      {gpg.length===0&&<p style={{color:C.grayDark,fontSize:13}}>No goals or assists scored yet.</p>}
       <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-        <thead><tr><TH>Rank</TH><TH>#</TH><TH>Player</TH><TH center>Goals</TH><TH center>Games</TH><TH center>Goals/Game</TH></tr></thead>
-        <tbody>{gpg.map(({p,goals,rate},i)=><tr key={p.id}>
+        <thead><tr><TH>Rank</TH><TH>#</TH><TH>Player</TH><TH center>Goals</TH><TH center>G/Game</TH><TH center>Assists</TH><TH center>A/Game</TH><TH center>Games</TH></tr></thead>
+        <tbody>{gpg.map(({p,goals,assists,rate,arate},i)=><tr key={p.id}>
           <TD><strong style={{color:i===0?C.red:C.text}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":`${i+1}`}</strong></TD>
-          <TD><strong>{p.number}</strong></TD><TD>{p.name}</TD><TD center>{goals}</TD><TD center>{totalGames}</TD>
+          <TD><strong>{p.number}</strong></TD><TD>{p.name}</TD>
+          <TD center>{goals}</TD>
           <TD center><span style={{fontWeight:800,color:rate>=1?C.red:rate>=0.5?"#856404":C.navy}}>{rate.toFixed(2)}</span></TD>
+          <TD center>{assists}</TD>
+          <TD center><span style={{fontWeight:800,color:arate>=1?C.red:arate>=0.5?"#856404":C.navy}}>{arate.toFixed(2)}</span></TD>
+          <TD center>{totalGames}</TD>
         </tr>)}</tbody>
       </table></div>
     </Card>
@@ -778,7 +788,7 @@ function MatchdaySheet({game,players,events,onClose}){
   const getPlayer=pid=>players.find(p=>p.id===pid);
   const W=400,H=520;
 
-  const fieldSVG=(withPlayers)=><svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"100%"}}>
+  const fieldSVG=(positions)=><svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"100%"}}>
     <rect width={W} height={H} fill="#2e7d32"/>
     <rect x="20" y="15" width="360" height="490" fill="none" stroke="rgba(255,255,255,.7)" strokeWidth="2"/>
     <line x1="20" y1="260" x2="380" y2="260" stroke="rgba(255,255,255,.6)" strokeWidth="1.5"/>
@@ -788,7 +798,7 @@ function MatchdaySheet({game,players,events,onClose}){
     <rect x="140" y="15" width="120" height="32" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="1"/>
     <rect x="100" y="440" width="200" height="65" fill="none" stroke="rgba(255,255,255,.6)" strokeWidth="1.5"/>
     <rect x="140" y="480" width="120" height="32" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="1"/>
-    {withPlayers&&fieldPos.map((fp,i)=>{
+    {(positions||[]).map((fp,i)=>{
       const p=getPlayer(fp.pid);
       if(!p)return <g key={i}><rect x={fp.x-14} y={fp.y-14} width="28" height="28" rx="3" fill="rgba(0,0,0,.25)" stroke="rgba(255,255,255,.4)" strokeWidth="1.5" strokeDasharray="3,2"/></g>;
       return <g key={i}>
@@ -822,14 +832,14 @@ function MatchdaySheet({game,players,events,onClose}){
           </div>
           {captains.length>0&&<div style={{marginTop:6,fontSize:12}}><strong>Captain{captains.length>1?"s":""}:</strong> {captains.map(p=>`#${p.number} ${p.name}`).join(", ")}</div>}
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10,pageBreakAfter:"always"}}>
           <div>
             <div style={{fontSize:11,fontWeight:700,textAlign:"center",marginBottom:4,color:"#0a1f44",textTransform:"uppercase",letterSpacing:.5}}>Starting Formation</div>
-            <div style={{aspectRatio:"400/520",borderRadius:6,overflow:"hidden",border:"1px solid #ccc"}}>{fieldSVG(true)}</div>
+            <div style={{aspectRatio:"400/520",borderRadius:6,overflow:"hidden",border:"1px solid #ccc"}}>{fieldSVG(game.fieldPositions||[])}</div>
           </div>
           <div>
-            <div style={{fontSize:11,fontWeight:700,textAlign:"center",marginBottom:4,color:"#0a1f44",textTransform:"uppercase",letterSpacing:.5}}>2nd Half / Substitutions</div>
-            <div style={{aspectRatio:"400/520",borderRadius:6,overflow:"hidden",border:"1px solid #ccc"}}>{fieldSVG(false)}</div>
+            <div style={{fontSize:11,fontWeight:700,textAlign:"center",marginBottom:4,color:"#0a1f44",textTransform:"uppercase",letterSpacing:.5}}>2nd Half Formation</div>
+            <div style={{aspectRatio:"400/520",borderRadius:6,overflow:"hidden",border:"1px solid #ccc"}}>{fieldSVG(game.fieldPositions2||[])}</div>
           </div>
         </div>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,marginBottom:10}}>
@@ -874,36 +884,38 @@ function MatchdaySheet({game,players,events,onClose}){
 
 // ── Game Modal ─────────────────────────────────────────────────────────────
 function GameModal({game,players,events,onClose,onSave,onDelete}){
-  const [g,setG]=useState({...game,playerStats:(game.playerStats||[]).map(s=>({...s})),fieldPositions:game.fieldPositions||[],notes:game.notes||"",h1For:game.h1For||0,h2For:game.h2For||0,h1Against:game.h1Against||0,h2Against:game.h2Against||0});
+  const [g,setG]=useState({...game,playerStats:(game.playerStats||[]).map(s=>({...s})),fieldPositions:game.fieldPositions||[],fieldPositions2:game.fieldPositions2||[],formation2:game.formation2||game.formation||"4-3-3",notes:game.notes||"",h1For:game.h1For||0,h2For:game.h2For||0,h1Against:game.h1Against||0,h2Against:game.h2Against||0});
   const [showMatchday,setShowMatchday]=useState(false);
   const [activeTab,setActiveTab]=useState("stats");
+  const [formationHalf,setFormationHalf]=useState("first");
   const [selectedSlot,setSelectedSlot]=useState(null);
+  const [selectedSlot2,setSelectedSlot2]=useState(null);
   const cnt=g.format==="7"?7:g.format==="9"?9:11;
   const [fieldPos,setFieldPos]=useState(()=>game.fieldPositions&&game.fieldPositions.length>0?game.fieldPositions:fpos(game.formation||"4-3-3",cnt-1).map(x=>({...x,pid:null})));
+  const [fieldPos2,setFieldPos2]=useState(()=>game.fieldPositions2&&game.fieldPositions2.length>0?game.fieldPositions2:fpos(game.formation2||game.formation||"4-3-3",cnt-1).map(x=>({...x,pid:null})));
   const bench=players.filter(p=>!fieldPos.find(x=>x.pid===p.id));
+  const bench2=players.filter(p=>!fieldPos2.find(x=>x.pid===p.id));
 
   const setStat=(pid,stat,val)=>setG(prev=>{const stats=prev.playerStats.map(s=>({...s}));let ps=stats.find(s=>s.pid===pid);if(!ps){ps={pid};stats.push(ps);}ps[stat]=val;return{...prev,playerStats:stats};});
   const getStat=(pid,stat)=>{const ps=g.playerStats.find(s=>s.pid===pid);return ps?(ps[stat]??0):0;};
   const getBool=(pid,stat)=>{const ps=g.playerStats.find(s=>s.pid===pid);return ps?!!ps[stat]:false;};
 
   const onFormationChange=fmt=>{const c=g.format==="7"?7:g.format==="9"?9:11;setFieldPos(prev=>fpos(fmt,c-1).map((x,i)=>({...x,pid:prev[i]?.pid||null})));setG(prev=>({...prev,formation:fmt}));setSelectedSlot(null);};
-  const onFormatChange=fmt=>{const c=fmt==="7"?7:fmt==="9"?9:11;setFieldPos(fpos(g.formation||"4-3-3",c-1).map(x=>({...x,pid:null})));setG(prev=>({...prev,format:fmt}));setSelectedSlot(null);};
+  const onFormationChange2=fmt=>{const c=g.format==="7"?7:g.format==="9"?9:11;setFieldPos2(prev=>fpos(fmt,c-1).map((x,i)=>({...x,pid:prev[i]?.pid||null})));setG(prev=>({...prev,formation2:fmt}));setSelectedSlot2(null);};
+  const onFormatChange=fmt=>{const c=fmt==="7"?7:fmt==="9"?9:11;setFieldPos(fpos(g.formation||"4-3-3",c-1).map(x=>({...x,pid:null})));setFieldPos2(fpos(g.formation2||g.formation||"4-3-3",c-1).map(x=>({...x,pid:null})));setG(prev=>({...prev,format:fmt}));setSelectedSlot(null);setSelectedSlot2(null);};
   const getPlayer=pid=>players.find(p=>p.id===pid);
 
   const onDragStart=(e,idx)=>{e.dataTransfer.setData("pid",fieldPos[idx].pid||"");e.dataTransfer.setData("from","field");e.dataTransfer.setData("idx",String(idx));};
   const onDragStartBench=(e,pid)=>{e.dataTransfer.setData("pid",pid);e.dataTransfer.setData("from","bench");};
-  const onDrop=(e,idx)=>{
-    e.preventDefault();
-    const pid=e.dataTransfer.getData("pid"),from=e.dataTransfer.getData("from"),fi=parseInt(e.dataTransfer.getData("idx"));
-    setFieldPos(prev=>{const n=prev.map(x=>({...x}));if(from==="field"){const d=n[idx].pid;n[idx].pid=pid||null;n[fi].pid=d||null;}else{n.forEach(x=>{if(x.pid===pid)x.pid=null;});n[idx].pid=pid||null;}return n;});
-  };
-  const onTapSlot=idx=>{
-    if(fieldPos[idx].pid){setFieldPos(prev=>prev.map((x,i)=>i===idx?{...x,pid:null}:x));setSelectedSlot(null);}
-    else setSelectedSlot(prev=>prev===idx?null:idx);
-  };
-  const onTapBench=pid=>{
-    if(selectedSlot!==null){setFieldPos(prev=>{const n=prev.map(x=>({...x}));n.forEach(x=>{if(x.pid===pid)x.pid=null;});n[selectedSlot].pid=pid;return n;});setSelectedSlot(null);}
-  };
+  const onDrop=(e,idx)=>{e.preventDefault();const pid=e.dataTransfer.getData("pid"),from=e.dataTransfer.getData("from"),fi=parseInt(e.dataTransfer.getData("idx"));setFieldPos(prev=>{const n=prev.map(x=>({...x}));if(from==="field"){const d=n[idx].pid;n[idx].pid=pid||null;n[fi].pid=d||null;}else{n.forEach(x=>{if(x.pid===pid)x.pid=null;});n[idx].pid=pid||null;}return n;});};
+  const onTapSlot=idx=>{if(fieldPos[idx].pid){setFieldPos(prev=>prev.map((x,i)=>i===idx?{...x,pid:null}:x));setSelectedSlot(null);}else setSelectedSlot(prev=>prev===idx?null:idx);};
+  const onTapBench=pid=>{if(selectedSlot!==null){setFieldPos(prev=>{const n=prev.map(x=>({...x}));n.forEach(x=>{if(x.pid===pid)x.pid=null;});n[selectedSlot].pid=pid;return n;});setSelectedSlot(null);}};
+
+  const onDragStart2=(e,idx)=>{e.dataTransfer.setData("pid",fieldPos2[idx].pid||"");e.dataTransfer.setData("from","field");e.dataTransfer.setData("idx",String(idx));};
+  const onDragStartBench2=(e,pid)=>{e.dataTransfer.setData("pid",pid);e.dataTransfer.setData("from","bench");};
+  const onDrop2=(e,idx)=>{e.preventDefault();const pid=e.dataTransfer.getData("pid"),from=e.dataTransfer.getData("from"),fi=parseInt(e.dataTransfer.getData("idx"));setFieldPos2(prev=>{const n=prev.map(x=>({...x}));if(from==="field"){const d=n[idx].pid;n[idx].pid=pid||null;n[fi].pid=d||null;}else{n.forEach(x=>{if(x.pid===pid)x.pid=null;});n[idx].pid=pid||null;}return n;});};
+  const onTapSlot2=idx=>{if(fieldPos2[idx].pid){setFieldPos2(prev=>prev.map((x,i)=>i===idx?{...x,pid:null}:x));setSelectedSlot2(null);}else setSelectedSlot2(prev=>prev===idx?null:idx);};
+  const onTapBench2=pid=>{if(selectedSlot2!==null){setFieldPos2(prev=>{const n=prev.map(x=>({...x}));n.forEach(x=>{if(x.pid===pid)x.pid=null;});n[selectedSlot2].pid=pid;return n;});setSelectedSlot2(null);}};
   const updateHalf=(key,val)=>{const v=parseInt(val)||0;setG(prev=>{const n={...prev,[key]:v};n.goalsFor=(key==="h1For"?v:prev.h1For||0)+(key==="h2For"?v:prev.h2For||0);n.goalsAgainst=(key==="h1Against"?v:prev.h1Against||0)+(key==="h2Against"?v:prev.h2Against||0);n.played=true;return n;});};
 
   const FMS=FMTS[g.format]||FMTS["11"];
@@ -921,7 +933,7 @@ function GameModal({game,players,events,onClose,onSave,onDelete}){
         <div style={{marginLeft:"auto",display:"flex",gap:8,flexWrap:"wrap"}}>
           <Btn variant="red" onClick={()=>{if(window.confirm(`Delete vs ${g.opponent}?`))onDelete(g.id);}}>🗑 Delete</Btn>
           <Btn onClick={()=>setShowMatchday(true)} style={{background:"#2e7d32",color:"#fff",border:"none"}}>🖨️ Matchday</Btn>
-          <Btn onClick={()=>onSave({...g,fieldPositions:fieldPos})}>💾 Save</Btn>
+          <Btn onClick={()=>onSave({...g,fieldPositions:fieldPos,fieldPositions2:fieldPos2})}>💾 Save</Btn>
         </div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
@@ -961,26 +973,48 @@ function GameModal({game,players,events,onClose,onSave,onDelete}){
         </table>
       </div>}
       {activeTab==="formation"&&<div>
-        <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10,flexWrap:"wrap"}}>
-          <div><Label>Formation</Label><Dropdown value={g.formation||"4-3-3"} onChange={e=>onFormationChange(e.target.value)} style={{width:125}}>{FMS.map(f=><option key={f} value={f}>{f}</option>)}</Dropdown></div>
-          <div style={{fontSize:12,color:C.grayDark,marginTop:14}}><strong>Desktop:</strong> drag jerseys. <strong>Mobile:</strong> tap slot then tap player.</div>
+        <div style={{display:"flex",gap:6,marginBottom:12}}>
+          <Btn sm onClick={()=>{setFormationHalf("first");setSelectedSlot(null);setSelectedSlot2(null);}} style={{background:formationHalf==="first"?C.red:"transparent",color:formationHalf==="first"?"#fff":C.navy,border:`2px solid ${C.red}`}}>1st Half</Btn>
+          <Btn sm onClick={()=>{setFormationHalf("second");setSelectedSlot(null);setSelectedSlot2(null);}} style={{background:formationHalf==="second"?C.red:"transparent",color:formationHalf==="second"?"#fff":C.navy,border:`2px solid ${C.red}`}}>2nd Half</Btn>
         </div>
-        <div style={{display:"flex",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}>
-          <div style={{flex:"1 1 240px",minWidth:200}}>
-            <SoccerField fieldPos={fieldPos} getPlayer={getPlayer} onDrop={onDrop} onDragStart={onDragStart} onTapSlot={onTapSlot} selectedSlot={selectedSlot}/>
+        {formationHalf==="first"&&<div>
+          <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10,flexWrap:"wrap"}}>
+            <div><Label>Formation</Label><Dropdown value={g.formation||"4-3-3"} onChange={e=>onFormationChange(e.target.value)} style={{width:125}}>{FMS.map(f=><option key={f} value={f}>{f}</option>)}</Dropdown></div>
+            <div style={{fontSize:12,color:C.grayDark,marginTop:14}}><strong>Desktop:</strong> drag jerseys. <strong>Mobile:</strong> tap slot then tap player.</div>
           </div>
-          <div style={{flex:"0 0 160px"}}>
-            <div style={{fontWeight:700,fontSize:13,color:C.navy,marginBottom:6}}>{selectedSlot!==null?<span style={{color:C.red}}>👆 Tap a player</span>:"Bench / Pool"}</div>
-            <div style={{display:"flex",flexDirection:"column",gap:5,background:C.gray,borderRadius:8,padding:7,maxHeight:"50vh",overflowY:"auto"}}>
-              {bench.length===0&&<span style={{color:C.grayDark,fontSize:12}}>All placed</span>}
-              {bench.map(p=><div key={p.id} draggable onDragStart={e=>onDragStartBench(e,p.id)} onClick={()=>onTapBench(p.id)}
-                style={{display:"flex",alignItems:"center",gap:6,background:selectedSlot!==null?"#e8f4e8":"#fff",borderRadius:6,padding:"5px 8px",cursor:"pointer",border:`1px solid ${selectedSlot!==null?"#2e7d32":C.grayMid}`}}>
-                <Jersey number={p.number} size={24}/><span style={{fontSize:12,fontWeight:600}}>{p.name}</span>
-              </div>)}
+          <div style={{display:"flex",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}>
+            <div style={{flex:"1 1 240px",minWidth:200}}><SoccerField fieldPos={fieldPos} getPlayer={getPlayer} onDrop={onDrop} onDragStart={onDragStart} onTapSlot={onTapSlot} selectedSlot={selectedSlot}/></div>
+            <div style={{flex:"0 0 160px"}}>
+              <div style={{fontWeight:700,fontSize:13,color:C.navy,marginBottom:6}}>{selectedSlot!==null?<span style={{color:C.red}}>👆 Tap a player</span>:"Bench / Pool"}</div>
+              <div style={{display:"flex",flexDirection:"column",gap:5,background:C.gray,borderRadius:8,padding:7,maxHeight:"50vh",overflowY:"auto"}}>
+                {bench.length===0&&<span style={{color:C.grayDark,fontSize:12}}>All placed</span>}
+                {bench.map(p=><div key={p.id} draggable onDragStart={e=>onDragStartBench(e,p.id)} onClick={()=>onTapBench(p.id)} style={{display:"flex",alignItems:"center",gap:6,background:selectedSlot!==null?"#e8f4e8":"#fff",borderRadius:6,padding:"5px 8px",cursor:"pointer",border:`1px solid ${selectedSlot!==null?"#2e7d32":C.grayMid}`}}>
+                  <Jersey number={p.number} size={24}/><span style={{fontSize:12,fontWeight:600}}>{p.name}</span>
+                </div>)}
+              </div>
+              {selectedSlot!==null&&<div style={{marginTop:8}}><Btn sm variant="outline" onClick={()=>setSelectedSlot(null)}>✕ Cancel</Btn></div>}
             </div>
-            {selectedSlot!==null&&<div style={{marginTop:8}}><Btn sm variant="outline" onClick={()=>setSelectedSlot(null)}>✕ Cancel</Btn></div>}
           </div>
-        </div>
+        </div>}
+        {formationHalf==="second"&&<div>
+          <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10,flexWrap:"wrap"}}>
+            <div><Label>2nd Half Formation</Label><Dropdown value={g.formation2||g.formation||"4-3-3"} onChange={e=>onFormationChange2(e.target.value)} style={{width:125}}>{FMS.map(f=><option key={f} value={f}>{f}</option>)}</Dropdown></div>
+            <div style={{fontSize:12,color:C.grayDark,marginTop:14}}><strong>Desktop:</strong> drag jerseys. <strong>Mobile:</strong> tap slot then tap player.</div>
+          </div>
+          <div style={{display:"flex",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}>
+            <div style={{flex:"1 1 240px",minWidth:200}}><SoccerField fieldPos={fieldPos2} getPlayer={getPlayer} onDrop={onDrop2} onDragStart={onDragStart2} onTapSlot={onTapSlot2} selectedSlot={selectedSlot2}/></div>
+            <div style={{flex:"0 0 160px"}}>
+              <div style={{fontWeight:700,fontSize:13,color:C.navy,marginBottom:6}}>{selectedSlot2!==null?<span style={{color:C.red}}>👆 Tap a player</span>:"Bench / Pool"}</div>
+              <div style={{display:"flex",flexDirection:"column",gap:5,background:C.gray,borderRadius:8,padding:7,maxHeight:"50vh",overflowY:"auto"}}>
+                {bench2.length===0&&<span style={{color:C.grayDark,fontSize:12}}>All placed</span>}
+                {bench2.map(p=><div key={p.id} draggable onDragStart={e=>onDragStartBench2(e,p.id)} onClick={()=>onTapBench2(p.id)} style={{display:"flex",alignItems:"center",gap:6,background:selectedSlot2!==null?"#e8f4e8":"#fff",borderRadius:6,padding:"5px 8px",cursor:"pointer",border:`1px solid ${selectedSlot2!==null?"#2e7d32":C.grayMid}`}}>
+                  <Jersey number={p.number} size={24}/><span style={{fontSize:12,fontWeight:600}}>{p.name}</span>
+                </div>)}
+              </div>
+              {selectedSlot2!==null&&<div style={{marginTop:8}}><Btn sm variant="outline" onClick={()=>setSelectedSlot2(null)}>✕ Cancel</Btn></div>}
+            </div>
+          </div>
+        </div>}
       </div>}
     </Modal>
     {showMatchday&&<MatchdaySheet game={{...g,fieldPositions:fieldPos}} players={players} events={events} onClose={()=>setShowMatchday(false)}/>}
