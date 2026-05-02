@@ -249,7 +249,7 @@ function App(){
 
   const seasonEvents=events.filter(e=>e.seasonId===selSeason);
   const seasonGames=games.filter(g=>g.seasonId===selSeason);
-  const teamPlayers=players.filter(p=>p.teamId===selTeam);
+  const teamPlayers=players.filter(p=>(p.teamIds||[p.teamId]).includes(selTeam)&&!p.archived);
   const allTeamGames=games.filter(g=>seasons.find(s=>s.teamId===selTeam&&s.id===g.seasonId));
 
   const openGame=gid=>{const g=games.find(x=>x.id===gid);if(g)setGameModal(g);};
@@ -328,7 +328,7 @@ function App(){
     {showAddSeason&&selTeam&&<AddSeasonModal teamId={selTeam} onClose={()=>setShowAddSeason(false)} onAdd={s=>{setSeasons(p=>[...p,s]);setSelSeason(s.id);setShowAddSeason(false);}}/>}
     {editSeasonModal&&<EditSeasonModal season={editSeasonModal} onClose={()=>setEditSeasonModal(null)} onSave={s=>{setSeasons(p=>p.map(x=>x.teamId===s.teamId?(x.id===s.id?s:{...x,isCurrent:s.isCurrent?false:x.isCurrent}):x));setEditSeasonModal(null);}}/>}
     {gameModal&&<ErrorBoundary><GameModal game={gameModal} players={teamPlayers} events={seasonEvents} onClose={()=>setGameModal(null)} onSave={saveGame} onDelete={deleteGame}/></ErrorBoundary>}
-    {playerModal&&<PlayerModal player={playerModal} games={seasonGames} onClose={()=>setPlayerModal(null)}/>}
+    {playerModal&&<PlayerModal player={playerModal} games={seasonGames} allGames={allTeamGames} seasons={seasons} onClose={()=>setPlayerModal(null)}/>}
   </div>;
 }
 
@@ -475,34 +475,116 @@ function Schedule({games,events,seasonId,setGames,setEvents,onOpenGame}){
 // ── Roster ─────────────────────────────────────────────────────────────────
 function Roster({players,games,teamId,setPlayers,onOpenPlayer}){
   const [form,setForm]=useState({name:"",number:""});
+  const [view,setView]=useState("active"); // "active" | "archived"
+  const [showAddExisting,setShowAddExisting]=useState(false);
+
+  // Active = on this team and not archived
+  // Archived = archived flag is true (show all archived regardless of team for restore)
+  const teamActive=players.filter(p=>(p.teamIds||[p.teamId]).includes(teamId)&&!p.archived);
+  const allArchived=players.filter(p=>p.archived);
+  const displayed=view==="active"?teamActive:allArchived;
+
+  // Players not on this team and not archived — for the "add existing" pool
+  const notOnTeam=players.filter(p=>!(p.teamIds||[p.teamId]).includes(teamId)&&!p.archived);
+
   const played=games.filter(g=>g.played);
   const statSum=(pid,stat)=>played.reduce((a,g)=>{const ps=(g.playerStats||[]).find(p=>p.pid===pid);return a+(ps?ps[stat]||0:0);},0);
   const starts=pid=>played.filter(g=>(g.playerStats||[]).find(p=>p.pid===pid&&p.started)).length;
   const caps=pid=>played.filter(g=>(g.playerStats||[]).find(p=>p.pid===pid&&p.captain)).length;
+
+  const addPlayer=()=>{
+    if(!form.name||!form.number)return;
+    setPlayers(p=>[...p,{id:uid(),teamIds:[teamId],name:form.name,number:parseInt(form.number),archived:false}]);
+    setForm({name:"",number:""});
+  };
+
+  const archivePlayer=pid=>setPlayers(p=>p.map(x=>x.id===pid?{...x,archived:true}:x));
+  const restorePlayer=pid=>setPlayers(p=>p.map(x=>x.id===pid?{...x,archived:false,teamIds:[...new Set([...(x.teamIds||[x.teamId]),teamId])]}:x));
+  const removeFromTeam=pid=>setPlayers(p=>p.map(x=>x.id===pid?{...x,teamIds:(x.teamIds||[x.teamId]).filter(t=>t!==teamId)}:x));
+  const addExistingToTeam=pid=>setPlayers(p=>p.map(x=>x.id===pid?{...x,teamIds:[...new Set([...(x.teamIds||[x.teamId]),teamId])]}:x));
+
+  const btnStyle=active=>({padding:"5px 14px",fontSize:12,fontWeight:700,borderRadius:6,cursor:"pointer",border:`2px solid ${C.navy}`,background:active?C.navy:"transparent",color:active?"#fff":C.navy,fontFamily:"inherit"});
+
   return <div>
     <h2 style={{color:C.navy,marginBottom:14,fontWeight:800}}>Roster</h2>
-    <Card style={{marginBottom:14}}>
-      <h3 style={{marginBottom:10,fontSize:14,color:C.navy}}>Add Player</h3>
+
+    {/* Toggle */}
+    <div style={{display:"flex",gap:6,marginBottom:14,alignItems:"center"}}>
+      <button style={btnStyle(view==="active")} onClick={()=>setView("active")}>Active ({teamActive.length})</button>
+      <button style={btnStyle(view==="archived")} onClick={()=>setView("archived")}>🗄 Alumni ({allArchived.length})</button>
+      {view==="active"&&<Btn sm variant="outline" onClick={()=>setShowAddExisting(true)} style={{marginLeft:8}}>+ Add Existing Player</Btn>}
+    </div>
+
+    {/* Add new player — only on active view */}
+    {view==="active"&&<Card style={{marginBottom:14}}>
+      <h3 style={{marginBottom:10,fontSize:14,color:C.navy}}>Add New Player</h3>
       <div style={{display:"grid",gridTemplateColumns:"2fr 1fr auto",gap:8,alignItems:"end"}}>
         <div><Label>Name</Label><TextInput value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Full name"/></div>
         <div><Label>Jersey #</Label><TextInput type="number" value={form.number} onChange={e=>setForm({...form,number:e.target.value})} placeholder="#"/></div>
-        <Btn onClick={()=>{if(form.name&&form.number){setPlayers(p=>[...p,{id:uid(),teamId,name:form.name,number:parseInt(form.number)}]);setForm({name:"",number:""});}}}>Add</Btn>
+        <Btn onClick={addPlayer}>Add</Btn>
       </div>
-    </Card>
+    </Card>}
+
+    {/* Player table */}
     <Card>
-      {players.length===0&&<p style={{color:C.grayDark,fontSize:13}}>No players yet.</p>}
-      <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-        <thead><tr><TH>#</TH><TH>Name</TH><TH center>Goals</TH><TH center>Assists</TH><TH center>🟨</TH><TH center>🟥</TH><TH center>Starts</TH><TH center>Captain</TH><TH></TH></tr></thead>
-        <tbody>{[...players].sort((a,b)=>a.number-b.number).map(p=><tr key={p.id}>
-          <TD><strong>{p.number}</strong></TD>
-          <TD><span onClick={()=>onOpenPlayer(p.id)} style={{cursor:"pointer",textDecoration:"underline",color:C.navy,fontWeight:600}}>{p.name}</span></TD>
-          <TD center>{statSum(p.id,"goals")}</TD><TD center>{statSum(p.id,"assists")}</TD>
-          <TD center>{statSum(p.id,"yellowCards")}</TD><TD center>{statSum(p.id,"redCards")}</TD>
-          <TD center>{starts(p.id)}</TD><TD center>{caps(p.id)}</TD>
-          <TD><Btn sm variant="red" onClick={()=>setPlayers(p2=>p2.filter(x=>x.id!==p.id))}>✕</Btn></TD>
-        </tr>)}</tbody>
-      </table></div>
+      {displayed.length===0&&<p style={{color:C.grayDark,fontSize:13}}>{view==="active"?"No active players on this team.":"No alumni yet."}</p>}
+      {displayed.length>0&&<div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <thead><tr>
+            <TH>#</TH><TH>Name</TH>
+            {view==="active"&&<><TH center>Goals</TH><TH center>Assists</TH><TH center>🟨</TH><TH center>🟥</TH><TH center>Starts</TH><TH center>Captain</TH><TH>Teams</TH></>}
+            {view==="archived"&&<><TH>Teams (when active)</TH></>}
+            <TH>Actions</TH>
+          </tr></thead>
+          <tbody>{[...displayed].sort((a,b)=>a.number-b.number).map(p=>{
+            const tIds=p.teamIds||[p.teamId];
+            return <tr key={p.id}>
+              <TD><strong>{p.number}</strong></TD>
+              <TD>
+                <span onClick={()=>onOpenPlayer(p.id)} style={{cursor:"pointer",textDecoration:"underline",color:C.navy,fontWeight:600}}>{p.name}</span>
+              </TD>
+              {view==="active"&&<>
+                <TD center>{statSum(p.id,"goals")}</TD>
+                <TD center>{statSum(p.id,"assists")}</TD>
+                <TD center>{statSum(p.id,"yellowCards")}</TD>
+                <TD center>{statSum(p.id,"redCards")}</TD>
+                <TD center>{starts(p.id)}</TD>
+                <TD center>{caps(p.id)}</TD>
+                <TD><span style={{fontSize:11,color:C.grayDark}}>{tIds.length} team{tIds.length!==1?"s":""}</span></TD>
+              </>}
+              {view==="archived"&&<TD><span style={{fontSize:11,color:C.grayDark}}>{tIds.length} team{tIds.length!==1?"s":""}</span></TD>}
+              <TD>
+                <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                  {view==="active"&&<>
+                    <Btn sm variant="outline" onClick={()=>archivePlayer(p.id)}>🗄 Archive</Btn>
+                    {tIds.length>1&&<Btn sm variant="red" onClick={()=>removeFromTeam(p.id)}>Remove from Team</Btn>}
+                  </>}
+                  {view==="archived"&&<Btn sm onClick={()=>restorePlayer(p.id)}>↩ Restore</Btn>}
+                </div>
+              </TD>
+            </tr>;
+          })}</tbody>
+        </table>
+      </div>}
     </Card>
+
+    {/* Add existing player modal */}
+    {showAddExisting&&<Modal onClose={()=>setShowAddExisting(false)} maxWidth={500}>
+      <h3 style={{color:C.navy,marginBottom:14}}>Add Existing Player to Team</h3>
+      {notOnTeam.length===0&&<p style={{color:C.grayDark,fontSize:13}}>No other players available. All active players are already on this team.</p>}
+      {notOnTeam.length>0&&<div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:360,overflowY:"auto"}}>
+        {[...notOnTeam].sort((a,b)=>a.name.localeCompare(b.name)).map(p=>(
+          <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:C.gray,borderRadius:8}}>
+            <div>
+              <span style={{fontWeight:700}}>#{p.number} {p.name}</span>
+              <span style={{fontSize:11,color:C.grayDark,marginLeft:8}}>{(p.teamIds||[p.teamId]).length} team{(p.teamIds||[p.teamId]).length!==1?"s":""}</span>
+            </div>
+            <Btn sm onClick={()=>{addExistingToTeam(p.id);setShowAddExisting(false);}}>+ Add</Btn>
+          </div>
+        ))}
+      </div>}
+      <div style={{marginTop:14}}><Btn variant="outline" onClick={()=>setShowAddExisting(false)}>Close</Btn></div>
+    </Modal>}
   </div>;
 }
 
@@ -685,6 +767,58 @@ function TeamAnalytics({games,allGames,seasons,mode,getEvent}){
   </div>;
 }
 
+// ── Sortable Goals & Assists Table ─────────────────────────────────────────
+function SortableGPG({rows,totalGames}){
+  const [sortKey,setSortKey]=useState("points");
+  const [sortDir,setSortDir]=useState("desc");
+
+  const handleSort=key=>{
+    if(sortKey===key) setSortDir(d=>d==="desc"?"asc":"desc");
+    else{setSortKey(key);setSortDir("desc");}
+  };
+
+  const sorted=[...rows].sort((a,b)=>{
+    const av=a[sortKey], bv=b[sortKey];
+    return sortDir==="desc"?bv-av:av-bv;
+  });
+
+  const arrow=key=>sortKey===key?(sortDir==="desc"?" ▼":" ▲"):" ↕";
+
+  const SH=({label,k,center})=><th onClick={()=>handleSort(k)}
+    style={{background:C.navy,color:"#fff",padding:"7px 9px",textAlign:center?"center":"left",
+      fontSize:12,whiteSpace:"nowrap",cursor:"pointer",userSelect:"none",
+      borderBottom:sortKey===k?`3px solid ${C.red}`:"3px solid transparent"}}>
+    {label}{arrow(k)}
+  </th>;
+
+  return <div style={{overflowX:"auto"}}>
+    <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+      <thead><tr>
+        <th style={{background:C.navy,color:"#fff",padding:"7px 9px",fontSize:12}}>#</th>
+        <SH label="Player" k="p"/>
+        <SH label="Goals" k="goals" center/>
+        <SH label="G/Game" k="rate" center/>
+        <SH label="Assists" k="assists" center/>
+        <SH label="A/Game" k="arate" center/>
+        <SH label="Games" k="games" center/>
+        <SH label="Points" k="points" center/>
+      </tr></thead>
+      <tbody>{sorted.map(({p,goals,assists,rate,arate,points},i)=>(
+        <tr key={p.id} style={{background:i%2===0?"#f8f9fb":"#fff"}}>
+          <TD><strong>{p.number}</strong></TD>
+          <TD>{p.name}</TD>
+          <TD center>{goals}</TD>
+          <TD center><span style={{fontWeight:700,color:rate>=1?C.red:rate>=0.5?"#856404":C.navy}}>{rate.toFixed(2)}</span></TD>
+          <TD center>{assists}</TD>
+          <TD center><span style={{fontWeight:700,color:arate>=1?C.red:arate>=0.5?"#856404":C.navy}}>{arate.toFixed(2)}</span></TD>
+          <TD center>{totalGames}</TD>
+          <TD center><span style={{fontWeight:800,fontSize:14,color:C.navy}}>{points}</span></TD>
+        </tr>
+      ))}</tbody>
+    </table>
+  </div>;
+}
+
 // ── Player Analytics ───────────────────────────────────────────────────────
 function PlayerAnalytics({games,allGames,players,seasons}){
   const statSum=(pid,stat,gs)=>gs.reduce((a,g)=>{const ps=(g.playerStats||[]).find(p=>p.pid===pid);return a+(ps?ps[stat]||0:0);},0);
@@ -697,8 +831,9 @@ function PlayerAnalytics({games,allGames,players,seasons}){
     goals:statSum(p.id,"goals",games),
     assists:statSum(p.id,"assists",games),
     rate:statSum(p.id,"goals",games)>0?Math.round(statSum(p.id,"goals",games)/totalGames*100)/100:0,
-    arate:statSum(p.id,"assists",games)>0?Math.round(statSum(p.id,"assists",games)/totalGames*100)/100:0
-  })).filter(x=>x.goals>0||x.assists>0).sort((a,b)=>b.rate-a.rate);
+    arate:statSum(p.id,"assists",games)>0?Math.round(statSum(p.id,"assists",games)/totalGames*100)/100:0,
+    points:statSum(p.id,"goals",games)*2+statSum(p.id,"assists",games)
+  })).filter(x=>x.goals>0||x.assists>0);
   const startCap=[...players].map(p=>({p,st:starts(p.id,games),cap:caps(p.id,games),stPct:Math.round(starts(p.id,games)/totalGames*100),capPct:Math.round(caps(p.id,games)/totalGames*100)})).filter(x=>x.st>0||x.cap>0).sort((a,b)=>b.st-a.st);
   const seasonLines=players.map(p=>({p,rows:seasons.map(s=>{const sg=allGames.filter(g=>g.seasonId===s.id);return{season:s.name,isCurrent:s.isCurrent,goals:statSum(p.id,"goals",sg),assists:statSum(p.id,"assists",sg),yc:statSum(p.id,"yellowCards",sg),rc:statSum(p.id,"redCards",sg),starts:starts(p.id,sg),caps:caps(p.id,sg)};}).filter(r=>r.starts>0||r.goals>0||r.assists>0)})).filter(x=>x.rows.length>0);
   const SH=({title})=><h3 style={{color:C.navy,fontSize:15,fontWeight:800,marginBottom:10}}>{title}</h3>;
@@ -717,19 +852,8 @@ function PlayerAnalytics({games,allGames,players,seasons}){
       </div>
     </Card>
     <Card><SH title="⚡ Goals & Assists Per Game"/>
-      {gpg.length===0&&<p style={{color:C.grayDark,fontSize:13}}>No goals or assists scored yet.</p>}
-      <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-        <thead><tr><TH>Rank</TH><TH>#</TH><TH>Player</TH><TH center>Goals</TH><TH center>G/Game</TH><TH center>Assists</TH><TH center>A/Game</TH><TH center>Games</TH></tr></thead>
-        <tbody>{gpg.map(({p,goals,assists,rate,arate},i)=><tr key={p.id}>
-          <TD><strong style={{color:i===0?C.red:C.text}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":`${i+1}`}</strong></TD>
-          <TD><strong>{p.number}</strong></TD><TD>{p.name}</TD>
-          <TD center>{goals}</TD>
-          <TD center><span style={{fontWeight:800,color:rate>=1?C.red:rate>=0.5?"#856404":C.navy}}>{rate.toFixed(2)}</span></TD>
-          <TD center>{assists}</TD>
-          <TD center><span style={{fontWeight:800,color:arate>=1?C.red:arate>=0.5?"#856404":C.navy}}>{arate.toFixed(2)}</span></TD>
-          <TD center>{totalGames}</TD>
-        </tr>)}</tbody>
-      </table></div>
+      {gpg.length===0&&<p style={{color:C.grayDark,fontSize:13}}>No goals or assists yet.</p>}
+      {gpg.length>0&&<SortableGPG rows={gpg} totalGames={totalGames}/>}
     </Card>
     <Card><SH title="🔰 Starting % & Captain Frequency"/>
       <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
@@ -1022,35 +1146,98 @@ function GameModal({game,players,events,onClose,onSave,onDelete}){
 }
 
 // ── Player Modal ───────────────────────────────────────────────────────────
-function PlayerModal({player,games,onClose}){
+function PlayerModal({player,games,allGames,seasons,onClose}){
+  const [tab,setTab]=useState("season");
   const played=games.filter(g=>g.played);
+  const allPlayed=allGames.filter(g=>g.played);
+
   const rows=played.map(g=>({g,ps:(g.playerStats||[]).find(p=>p.pid===player.id)||{},fp:(g.fieldPositions||[]).find(f=>f.pid===player.id)}));
   const tot=rows.reduce((a,{ps})=>({goals:a.goals+(ps.goals||0),assists:a.assists+(ps.assists||0),y:a.y+(ps.yellowCards||0),r:a.r+(ps.redCards||0),starts:a.starts+(ps.started?1:0),caps:a.caps+(ps.captain?1:0)}),{goals:0,assists:0,y:0,r:0,starts:0,caps:0});
-  return <Modal onClose={onClose} maxWidth={740}>
+
+  // Career stats by season
+  const careerSeasons=seasons.map(s=>{
+    const sg=allPlayed.filter(g=>g.seasonId===s.id);
+    const ps_=pid=>sg.reduce((a,g)=>{const ps=(g.playerStats||[]).find(p=>p.pid===pid);return a+(ps?ps[0]||0:0);},0);
+    const statS=(stat)=>sg.reduce((a,g)=>{const ps=(g.playerStats||[]).find(p=>p.pid===player.id);return a+(ps?ps[stat]||0:0);},0);
+    const st=sg.filter(g=>(g.playerStats||[]).find(p=>p.pid===player.id&&p.started)).length;
+    const cap=sg.filter(g=>(g.playerStats||[]).find(p=>p.pid===player.id&&p.captain)).length;
+    const goals=statS("goals"),assists=statS("assists"),yc=statS("yellowCards"),rc=statS("redCards");
+    if(st===0&&goals===0&&assists===0&&yc===0&&rc===0&&cap===0)return null;
+    return{season:s.name,goals,assists,yc,rc,starts:st,caps:cap,games:sg.length};
+  }).filter(Boolean);
+
+  const careerTot=careerSeasons.reduce((a,r)=>({goals:a.goals+r.goals,assists:a.assists+r.assists,yc:a.yc+r.yc,rc:a.rc+r.rc,starts:a.starts+r.starts,caps:a.caps+r.caps,games:a.games+r.games}),{goals:0,assists:0,yc:0,rc:0,starts:0,caps:0,games:0});
+
+  const btnStyle=active=>({padding:"5px 14px",fontSize:12,fontWeight:700,borderRadius:6,cursor:"pointer",border:`2px solid ${C.navy}`,background:active?C.navy:"transparent",color:active?"#fff":C.navy,fontFamily:"inherit"});
+
+  return <Modal onClose={onClose} maxWidth={780}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-      <h2 style={{color:C.navy}}>#{player.number} {player.name}</h2>
+      <div>
+        <h2 style={{color:C.navy}}>#{player.number} {player.name}</h2>
+        {player.archived&&<span style={{fontSize:11,background:"#fff3cd",color:"#856404",padding:"2px 8px",borderRadius:20,fontWeight:700}}>Alumni</span>}
+      </div>
       <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:C.grayDark}}>✕</button>
     </div>
-    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
-      {[["Goals",tot.goals,"⚽"],["Assists",tot.assists,"🎯"],["Yellow",tot.y,"🟨"],["Red",tot.r,"🟥"],["Starts",tot.starts,"▶"],["Captain",tot.caps,"©"]].map(([l,v,ic])=>
-        <div key={l} style={{background:C.gray,borderRadius:8,padding:"7px 12px",textAlign:"center",minWidth:65}}>
-          <div style={{fontSize:17,fontWeight:800,color:C.navy}}>{v}</div>
-          <div style={{fontSize:11,color:C.grayDark}}>{ic} {l}</div>
-        </div>)}
+
+    <div style={{display:"flex",gap:6,marginBottom:14}}>
+      <button style={btnStyle(tab==="season")} onClick={()=>setTab("season")}>This Season</button>
+      <button style={btnStyle(tab==="career")} onClick={()=>setTab("career")}>Career View</button>
     </div>
-    <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-      <thead><tr><TH>Opponent</TH><TH>Date</TH><TH center>Started</TH><TH center>Captain</TH><TH center>Goals</TH><TH center>Assists</TH><TH center>🟨</TH><TH center>🟥</TH><TH>Position</TH></tr></thead>
-      <tbody>
-        {rows.length===0&&<tr><td colSpan={9} style={{padding:10,color:C.grayDark}}>No data yet.</td></tr>}
-        {rows.map(({g,ps,fp})=><tr key={g.id}>
-          <TD>vs {g.opponent}</TD><TD>{g.date?new Date(g.date).toLocaleDateString():""}</TD>
-          <TD center>{ps.started?"✅":""}</TD><TD center>{ps.captain?"©":""}</TD>
-          <TD center>{ps.goals||0}</TD><TD center>{ps.assists||0}</TD>
-          <TD center>{ps.yellowCards||0}</TD><TD center>{ps.redCards||0}</TD>
-          <TD>{fp?.role||"—"}</TD>
-        </tr>)}
-      </tbody>
-    </table></div>
+
+    {tab==="season"&&<>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
+        {[["Goals",tot.goals,"⚽"],["Assists",tot.assists,"🎯"],["Yellow",tot.y,"🟨"],["Red",tot.r,"🟥"],["Starts",tot.starts,"▶"],["Captain",tot.caps,"©"]].map(([l,v,ic])=>
+          <div key={l} style={{background:C.gray,borderRadius:8,padding:"7px 12px",textAlign:"center",minWidth:65}}>
+            <div style={{fontSize:17,fontWeight:800,color:C.navy}}>{v}</div>
+            <div style={{fontSize:11,color:C.grayDark}}>{ic} {l}</div>
+          </div>)}
+      </div>
+      <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+        <thead><tr><TH>Opponent</TH><TH>Date</TH><TH center>Started</TH><TH center>Captain</TH><TH center>Goals</TH><TH center>Assists</TH><TH center>🟨</TH><TH center>🟥</TH><TH>Position</TH></tr></thead>
+        <tbody>
+          {rows.length===0&&<tr><td colSpan={9} style={{padding:10,color:C.grayDark}}>No data yet.</td></tr>}
+          {rows.map(({g,ps,fp})=><tr key={g.id}>
+            <TD>vs {g.opponent}</TD><TD>{g.date?new Date(g.date).toLocaleDateString():""}</TD>
+            <TD center>{ps.started?"✅":""}</TD><TD center>{ps.captain?"©":""}</TD>
+            <TD center>{ps.goals||0}</TD><TD center>{ps.assists||0}</TD>
+            <TD center>{ps.yellowCards||0}</TD><TD center>{ps.redCards||0}</TD>
+            <TD>{fp?.role||"—"}</TD>
+          </tr>)}
+        </tbody>
+      </table></div>
+    </>}
+
+    {tab==="career"&&<>
+      {/* Career totals summary */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
+        {[["Goals",careerTot.goals,"⚽"],["Assists",careerTot.assists,"🎯"],["Yellow",careerTot.yc,"🟨"],["Red",careerTot.rc,"🟥"],["Starts",careerTot.starts,"▶"],["Captain",careerTot.caps,"©"],["Games",careerTot.games,"🏟"]].map(([l,v,ic])=>
+          <div key={l} style={{background:C.gray,borderRadius:8,padding:"7px 12px",textAlign:"center",minWidth:65}}>
+            <div style={{fontSize:17,fontWeight:800,color:C.navy}}>{v}</div>
+            <div style={{fontSize:11,color:C.grayDark}}>{ic} {l}</div>
+          </div>)}
+      </div>
+      {/* Season by season career breakdown */}
+      <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+        <thead><tr><TH>Season</TH><TH center>Games</TH><TH center>Starts</TH><TH center>Goals</TH><TH center>Assists</TH><TH center>Pts</TH><TH center>🟨</TH><TH center>🟥</TH><TH center>Captain</TH></tr></thead>
+        <tbody>
+          {careerSeasons.length===0&&<tr><td colSpan={9} style={{padding:10,color:C.grayDark}}>No career data yet.</td></tr>}
+          {careerSeasons.map(r=><tr key={r.season}>
+            <TD><strong>{r.season}</strong></TD>
+            <TD center>{r.games}</TD><TD center>{r.starts}</TD><TD center>{r.goals}</TD><TD center>{r.assists}</TD>
+            <TD center><strong>{r.goals*2+r.assists}</strong></TD>
+            <TD center>{r.yc}</TD><TD center>{r.rc}</TD><TD center>{r.caps}</TD>
+          </tr>)}
+          {careerSeasons.length>1&&<tr style={{background:"#e8edf7"}}>
+            <td style={{padding:"7px 9px",fontWeight:800,color:C.navy}}>Career Total</td>
+            <TD center><strong>{careerTot.games}</strong></TD><TD center><strong>{careerTot.starts}</strong></TD>
+            <TD center><strong>{careerTot.goals}</strong></TD><TD center><strong>{careerTot.assists}</strong></TD>
+            <TD center><strong>{careerTot.goals*2+careerTot.assists}</strong></TD>
+            <TD center><strong>{careerTot.yc}</strong></TD><TD center><strong>{careerTot.rc}</strong></TD>
+            <TD center><strong>{careerTot.caps}</strong></TD>
+          </tr>}
+        </tbody>
+      </table></div>
+    </>}
   </Modal>;
 }
 
