@@ -484,7 +484,7 @@ function Roster({players,games,teamId,setPlayers,onOpenPlayer}){
   const allArchived=players.filter(p=>p.archived);
   const displayed=view==="active"?teamActive:allArchived;
 
-  // Players not on this team and not archived — for the "add existing" pool
+  // Players not already on this team and not archived — for the "add existing" pool
   const notOnTeam=players.filter(p=>!(p.teamIds||[p.teamId]).includes(teamId)&&!p.archived);
 
   const played=games.filter(g=>g.played);
@@ -499,9 +499,9 @@ function Roster({players,games,teamId,setPlayers,onOpenPlayer}){
   };
 
   const archivePlayer=pid=>setPlayers(p=>p.map(x=>x.id===pid?{...x,archived:true}:x));
-  const restorePlayer=pid=>setPlayers(p=>p.map(x=>x.id===pid?{...x,archived:false,teamIds:[...new Set([...(x.teamIds||[x.teamId]),teamId])]}:x));
-  const removeFromTeam=pid=>setPlayers(p=>p.map(x=>x.id===pid?{...x,teamIds:(x.teamIds||[x.teamId]).filter(t=>t!==teamId)}:x));
-  const addExistingToTeam=pid=>setPlayers(p=>p.map(x=>x.id===pid?{...x,teamIds:[...new Set([...(x.teamIds||[x.teamId]),teamId])]}:x));
+  const restorePlayer=pid=>setPlayers(p=>p.map(x=>x.id===pid?{...x,archived:false,teamIds:[...new Set([...getTeamIds(x),teamId])]}:x));
+  const removeFromTeam=pid=>setPlayers(p=>p.map(x=>x.id===pid?{...x,teamIds:getTeamIds(x).filter(t=>t!==teamId)}:x));
+  const addExistingToTeam=pid=>setPlayers(p=>p.map(x=>x.id===pid?{...x,teamIds:[...new Set([...getTeamIds(x),teamId])]}:x));
 
   const btnStyle=active=>({padding:"5px 14px",fontSize:12,fontWeight:700,borderRadius:6,cursor:"pointer",border:`2px solid ${C.navy}`,background:active?C.navy:"transparent",color:active?"#fff":C.navy,fontFamily:"inherit"});
 
@@ -550,14 +550,14 @@ function Roster({players,games,teamId,setPlayers,onOpenPlayer}){
                 <TD center>{statSum(p.id,"redCards")}</TD>
                 <TD center>{starts(p.id)}</TD>
                 <TD center>{caps(p.id)}</TD>
-                <TD><span style={{fontSize:11,color:C.grayDark}}>{tIds.length} team{tIds.length!==1?"s":""}</span></TD>
+                <TD><span style={{fontSize:11,color:C.grayDark}}>{getTeamIds(p).length} team{getTeamIds(p).length!==1?"s":""}</span></TD>
               </>}
-              {view==="archived"&&<TD><span style={{fontSize:11,color:C.grayDark}}>{tIds.length} team{tIds.length!==1?"s":""}</span></TD>}
+              {view==="archived"&&<TD><span style={{fontSize:11,color:C.grayDark}}>{getTeamIds(p).length} team{getTeamIds(p).length!==1?"s":""}</span></TD>}
               <TD>
                 <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
                   {view==="active"&&<>
                     <Btn sm variant="outline" onClick={()=>archivePlayer(p.id)}>🗄 Archive</Btn>
-                    {tIds.length>1&&<Btn sm variant="red" onClick={()=>removeFromTeam(p.id)}>Remove from Team</Btn>}
+                    {getTeamIds(p).length>1&&<Btn sm variant="red" onClick={()=>removeFromTeam(p.id)}>Remove from Team</Btn>}
                   </>}
                   {view==="archived"&&<Btn sm onClick={()=>restorePlayer(p.id)}>↩ Restore</Btn>}
                 </div>
