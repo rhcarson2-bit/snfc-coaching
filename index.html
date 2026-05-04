@@ -15,7 +15,7 @@
 body{font-family:'Segoe UI',sans-serif;background:#f4f6f9;color:#1a2540;}
 input,select,button,textarea{font-family:inherit;}
 @media print{
-  body > *{visibility:hidden;}
+  body>*{visibility:hidden;}
   #matchday-print{visibility:visible;position:fixed;inset:0;padding:12px;background:#fff;}
   #matchday-print *{visibility:visible;}
   .no-print{display:none!important;}
@@ -37,14 +37,13 @@ const firebaseConfig = {
   measurementId: "G-SNK6EXXHTJ"
 };
 firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
-function dbRead(key,cb){db.ref(key).on("value",snap=>cb(snap.val()||[]));}
+const db=firebase.database();
+function dbRead(key,cb){db.ref(key).on("value",snap=>{const v=snap.val();cb(v===null?[]:Array.isArray(v)?v:Object.values(v));});}
 function dbWrite(key,val){db.ref(key).set(val);}
 function dbOff(key){db.ref(key).off();}
 </script>
 <script type="text/babel">
-const {useState,useEffect,useRef} = React;
-
+const {useState,useEffect,useRef}=React;
 const C={navy:"#0a1f44",red:"#c8102e",gray:"#f4f6f9",grayMid:"#dde2ea",grayDark:"#8a95a3",text:"#1a2540"};
 const FMTS={"11":["4-4-2","4-3-3","4-2-3-1","3-5-2","3-4-3"],"9":["3-3-2","3-2-3","2-4-2","4-3-1","4-2-2","3-4-1"],"7":["3-2-1","2-3-1","2-2-2","3-1-2"]};
 const ETYPES=["Tournament","League","Cup","Friendly"];
@@ -54,12 +53,13 @@ const uid=()=>Math.random().toString(36).slice(2);
 function fpos(fmt,cnt){
   const lines=fmt.split("-").map(Number),W=400,H=520,roles=["DEF","MID","ATT","FWD"];
   const p=[{x:W/2,y:H-40,role:"GK"}];
-  lines.forEach((n,li)=>{
-    const yf=0.75-(li/lines.length)*0.60;
-    for(let i=0;i<n;i++) p.push({x:((i+1)/(n+1))*W,y:yf*H,role:roles[Math.min(li,3)]});
-  });
+  lines.forEach((n,li)=>{const yf=0.75-(li/lines.length)*0.60;for(let i=0;i<n;i++)p.push({x:((i+1)/(n+1))*W,y:yf*H,role:roles[Math.min(li,3)]});});
   return p.slice(0,cnt+1);
 }
+
+// helpers
+const getTeamIds=p=>p.teamIds&&p.teamIds.length>0?p.teamIds:(p.teamId?[p.teamId]:[]);
+const isArchived=p=>p.archived===true;
 
 // ── Primitives ─────────────────────────────────────────────────────────────
 function Btn({children,onClick,variant="navy",sm=false,style={}}){
@@ -100,22 +100,16 @@ function EmptyState({message,actionLabel,onAction}){
     {onAction&&<Btn onClick={onAction}>{actionLabel}</Btn>}
   </Card>;
 }
-
-// ── Error Boundary ─────────────────────────────────────────────────────────
-class ErrorBoundary extends React.Component {
+class ErrorBoundary extends React.Component{
   constructor(props){super(props);this.state={error:null,info:null};}
   componentDidCatch(error,info){this.setState({error,info});}
   render(){
-    if(this.state.error){
-      return <div style={{padding:24,fontFamily:"monospace",background:"#fff3f3",border:"2px solid #c8102e",borderRadius:8,margin:16}}>
-        <h2 style={{color:"#c8102e",marginBottom:12}}>Render Error</h2>
-        <p style={{fontWeight:700,marginBottom:8}}>{this.state.error.toString()}</p>
-        <pre style={{background:"#fff",padding:12,borderRadius:6,overflowX:"auto",fontSize:11,whiteSpace:"pre-wrap",border:`1px solid ${C.grayMid}`}}>
-          {this.state.info&&this.state.info.componentStack}
-        </pre>
-        <button onClick={()=>this.setState({error:null,info:null})} style={{marginTop:12,padding:"8px 16px",background:C.navy,color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>Try to recover</button>
-      </div>;
-    }
+    if(this.state.error)return <div style={{padding:24,fontFamily:"monospace",background:"#fff3f3",border:"2px solid #c8102e",borderRadius:8,margin:16}}>
+      <h2 style={{color:"#c8102e",marginBottom:12}}>Render Error</h2>
+      <p style={{fontWeight:700,marginBottom:8}}>{this.state.error.toString()}</p>
+      <pre style={{background:"#fff",padding:12,borderRadius:6,overflowX:"auto",fontSize:11,whiteSpace:"pre-wrap",border:`1px solid ${C.grayMid}`}}>{this.state.info&&this.state.info.componentStack}</pre>
+      <button onClick={()=>this.setState({error:null,info:null})} style={{marginTop:12,padding:"8px 16px",background:C.navy,color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700}}>Try to recover</button>
+    </div>;
     return this.props.children;
   }
 }
@@ -134,31 +128,24 @@ function SoccerField({fieldPos,getPlayer,onDrop,onDragStart,onTapSlot,selectedSl
       <rect x="100" y="440" width="200" height="65" fill="none" stroke="rgba(255,255,255,.5)" strokeWidth="1.5"/>
       <rect x="140" y="480" width="120" height="32" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="1"/>
       {(fieldPos||[]).map((fp,i)=>{
-        const p=getPlayer(fp.pid);
-        const isSel=selectedSlot===i;
+        const p=getPlayer(fp.pid),isSel=selectedSlot===i;
         return <g key={i} onClick={()=>onTapSlot(i)} onDrop={e=>onDrop(e,i)} onDragOver={e=>e.preventDefault()} style={{cursor:"pointer"}}>
-          {p
-            ? <g draggable onDragStart={e=>onDragStart(e,i)}>
-                <path d={`M${fp.x-12},${fp.y-10} L${fp.x-8},${fp.y-14} Q${fp.x},${fp.y-16} ${fp.x+8},${fp.y-14} L${fp.x+12},${fp.y-10} L${fp.x+15},${fp.y-3} L${fp.x+8},${fp.y-1} L${fp.x+8},${fp.y+13} L${fp.x-8},${fp.y+13} L${fp.x-8},${fp.y-1} L${fp.x-15},${fp.y-3} Z`}
-                  fill={isSel?"#c8102e":C.navy} stroke={isSel?"#fff":"#c8102e"} strokeWidth="1.5"/>
-                <text x={fp.x} y={fp.y+5} textAnchor="middle" fill="#fff" fontSize="9" fontWeight="bold">{p.number}</text>
-                <text x={fp.x} y={fp.y+20} textAnchor="middle" fill="#fff" fontSize="6.5">{p.name.split(" ")[0].slice(0,9)}</text>
-              </g>
-            : <g>
-                <rect x={fp.x-14} y={fp.y-14} width="28" height="28" rx="4"
-                  fill={isSel?"rgba(255,255,255,.3)":"rgba(0,0,0,.2)"}
-                  stroke={isSel?"#fff":"rgba(255,255,255,.5)"}
-                  strokeWidth={isSel?3:1.5} strokeDasharray={isSel?"none":"4,3"}/>
-                <text x={fp.x} y={fp.y+5} textAnchor="middle" fill="rgba(255,255,255,.9)" fontSize="13" fontWeight="bold">{isSel?"●":"+"}</text>
-              </g>
-          }
+          {p?<g draggable onDragStart={e=>onDragStart(e,i)}>
+              <path d={`M${fp.x-12},${fp.y-10} L${fp.x-8},${fp.y-14} Q${fp.x},${fp.y-16} ${fp.x+8},${fp.y-14} L${fp.x+12},${fp.y-10} L${fp.x+15},${fp.y-3} L${fp.x+8},${fp.y-1} L${fp.x+8},${fp.y+13} L${fp.x-8},${fp.y+13} L${fp.x-8},${fp.y-1} L${fp.x-15},${fp.y-3} Z`} fill={isSel?"#c8102e":C.navy} stroke={isSel?"#fff":"#c8102e"} strokeWidth="1.5"/>
+              <text x={fp.x} y={fp.y+5} textAnchor="middle" fill="#fff" fontSize="9" fontWeight="bold">{p.number}</text>
+              <text x={fp.x} y={fp.y+20} textAnchor="middle" fill="#fff" fontSize="6.5">{p.name.split(" ")[0].slice(0,9)}</text>
+            </g>
+          :<g>
+              <rect x={fp.x-14} y={fp.y-14} width="28" height="28" rx="4" fill={isSel?"rgba(255,255,255,.3)":"rgba(0,0,0,.2)"} stroke={isSel?"#fff":"rgba(255,255,255,.5)"} strokeWidth={isSel?3:1.5} strokeDasharray={isSel?"none":"4,3"}/>
+              <text x={fp.x} y={fp.y+5} textAnchor="middle" fill="rgba(255,255,255,.9)" fontSize="13" fontWeight="bold">{isSel?"●":"+"}</text>
+            </g>}
         </g>;
       })}
     </svg>
   </div>;
 }
 
-// ── Login Screen ───────────────────────────────────────────────────────────
+// ── Login ──────────────────────────────────────────────────────────────────
 function LoginScreen(){
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
@@ -173,17 +160,14 @@ function LoginScreen(){
   return <div style={{minHeight:"100vh",background:C.navy,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
     <div style={{background:"#fff",borderRadius:12,padding:36,width:"100%",maxWidth:400,boxShadow:"0 8px 32px rgba(0,0,0,.3)"}}>
       <div style={{textAlign:"center",marginBottom:28}}>
-        <svg width="52" height="52" viewBox="0 0 32 32" style={{marginBottom:10}}>
-          <circle cx="16" cy="16" r="15" fill={C.red} stroke="#fff" strokeWidth="2"/>
-          <text x="16" y="21" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="bold">⚽</text>
-        </svg>
+        <svg width="52" height="52" viewBox="0 0 32 32" style={{marginBottom:10}}><circle cx="16" cy="16" r="15" fill={C.red} stroke="#fff" strokeWidth="2"/><text x="16" y="21" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="bold">⚽</text></svg>
         <h1 style={{color:C.navy,fontSize:22,fontWeight:800,marginBottom:4}}>SNFC Coaching</h1>
         <p style={{color:C.grayDark,fontSize:14}}>Sign in to continue</p>
       </div>
       {error&&<div style={{background:"#f8d7da",color:"#721c24",padding:"10px 14px",borderRadius:6,fontSize:13,marginBottom:16,fontWeight:600}}>{error}</div>}
       <div style={{marginBottom:14}}><Label>Email</Label><TextInput type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="your@email.com"/></div>
       <div style={{marginBottom:22}}><Label>Password</Label><TextInput type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••"/></div>
-      <Btn onClick={handleLogin} style={{width:"100%",padding:"11px",fontSize:15,opacity:loading?.7:1}}>{loading?"Signing in…":"Sign In"}</Btn>
+      <Btn onClick={handleLogin} style={{width:"100%",padding:"11px",fontSize:15,opacity:loading?0.7:1}}>{loading?"Signing in…":"Sign In"}</Btn>
     </div>
   </div>;
 }
@@ -209,28 +193,21 @@ function App(){
   const initialized=useRef(false);
   const writeTimer=useRef({});
 
-  useEffect(()=>{
-    const unsub=firebase.auth().onAuthStateChanged(u=>{setUser(u);setAuthReady(true);});
-    return()=>unsub();
-  },[]);
+  useEffect(()=>{const unsub=firebase.auth().onAuthStateChanged(u=>{setUser(u);setAuthReady(true);});return()=>unsub();},[]);
 
   useEffect(()=>{
     if(!user)return;
     let count=0;
     const done=()=>{count++;if(count===5){setReady(true);initialized.current=true;}};
-    const parse=v=>Array.isArray(v)?v:Object.values(v||{});
-    dbRead("teams",v=>{setTeams(parse(v));done();});
-    dbRead("seasons",v=>{setSeasons(parse(v));done();});
-    dbRead("events",v=>{setEvents(parse(v));done();});
-    dbRead("games",v=>{setGames(parse(v));done();});
-    dbRead("players",v=>{setPlayers(parse(v));done();});
+    dbRead("teams",v=>{setTeams(v);done();});
+    dbRead("seasons",v=>{setSeasons(v);done();});
+    dbRead("events",v=>{setEvents(v);done();});
+    dbRead("games",v=>{setGames(v);done();});
+    dbRead("players",v=>{setPlayers(v);done();});
     return()=>["teams","seasons","events","games","players"].forEach(dbOff);
   },[user]);
 
-  const syncWrite=(key,val)=>{
-    clearTimeout(writeTimer.current[key]);
-    writeTimer.current[key]=setTimeout(()=>dbWrite(key,val),600);
-  };
+  const syncWrite=(key,val)=>{clearTimeout(writeTimer.current[key]);writeTimer.current[key]=setTimeout(()=>dbWrite(key,val),600);};
   useEffect(()=>{if(initialized.current)syncWrite("teams",teams);},[teams]);
   useEffect(()=>{if(initialized.current)syncWrite("seasons",seasons);},[seasons]);
   useEffect(()=>{if(initialized.current)syncWrite("events",events);},[events]);
@@ -238,24 +215,20 @@ function App(){
   useEffect(()=>{if(initialized.current)syncWrite("players",players);},[players]);
 
   const teamSeasons=seasons.filter(s=>s.teamId===selTeam);
-
   useEffect(()=>{
-    if(selTeam){
-      const ss=seasons.filter(s=>s.teamId===selTeam);
-      const cur=ss.find(s=>s.isCurrent);
-      setSelSeason(cur?cur.id:ss.length?ss[ss.length-1].id:null);
-    }
+    if(selTeam){const ss=seasons.filter(s=>s.teamId===selTeam);const cur=ss.find(s=>s.isCurrent);setSelSeason(cur?cur.id:ss.length?ss[ss.length-1].id:null);}
   },[selTeam]);
 
   const seasonEvents=events.filter(e=>e.seasonId===selSeason);
   const seasonGames=games.filter(g=>g.seasonId===selSeason);
-  const teamPlayers=players.filter(p=>(p.teamIds||[p.teamId]).includes(selTeam)&&!p.archived);
+  const teamPlayers=players.filter(p=>getTeamIds(p).includes(selTeam)&&!isArchived(p));
   const allTeamGames=games.filter(g=>seasons.find(s=>s.teamId===selTeam&&s.id===g.seasonId));
 
   const openGame=gid=>{const g=games.find(x=>x.id===gid);if(g)setGameModal(g);};
   const openPlayer=pid=>{const p=players.find(x=>x.id===pid);if(p)setPlayerModal(p);};
   const saveGame=g=>{setGames(prev=>prev.map(x=>x.id===g.id?g:x));setGameModal(g);};
   const deleteGame=gid=>{setGames(p=>p.filter(x=>x.id!==gid));setGameModal(null);};
+
   const clearAll=()=>{
     if(!window.confirm("Clear ALL data?"))return;
     ["teams","seasons","events","games","players"].forEach(k=>dbWrite(k,[]));
@@ -320,14 +293,14 @@ function App(){
       {selTeam&&!selSeason&&tab!=="trophies"&&<EmptyState message="Add a season for this team." actionLabel="+ Add Season" onAction={()=>setShowAddSeason(true)}/>}
       {selTeam&&selSeason&&tab==="dashboard"&&<Dashboard games={seasonGames} events={seasonEvents} players={teamPlayers} season={seasons.find(s=>s.id===selSeason)} onOpenGame={openGame} onOpenPlayer={openPlayer}/>}
       {selTeam&&selSeason&&tab==="schedule"&&<Schedule games={seasonGames} events={seasonEvents} seasonId={selSeason} setGames={setGames} setEvents={setEvents} onOpenGame={openGame}/>}
-      {selTeam&&selSeason&&tab==="roster"&&<Roster players={teamPlayers} games={seasonGames} teamId={selTeam} setPlayers={setPlayers} onOpenPlayer={openPlayer}/>}
+      {selTeam&&selSeason&&tab==="roster"&&<Roster players={players} games={seasonGames} teamId={selTeam} setPlayers={setPlayers} onOpenPlayer={openPlayer}/>}
       {selTeam&&tab==="report"&&<ErrorBoundary><Report players={teamPlayers} games={allTeamGames} events={events} seasons={seasons} selTeam={selTeam} selSeason={selSeason}/></ErrorBoundary>}
       {selTeam&&tab==="trophies"&&<TrophyRoom events={events} seasons={seasons} selTeam={selTeam}/>}
     </div>
     {showAddTeam&&<AddTeamModal onClose={()=>setShowAddTeam(false)} onAdd={t=>{setTeams(p=>[...p,t]);setSelTeam(t.id);setShowAddTeam(false);}}/>}
     {showAddSeason&&selTeam&&<AddSeasonModal teamId={selTeam} onClose={()=>setShowAddSeason(false)} onAdd={s=>{setSeasons(p=>[...p,s]);setSelSeason(s.id);setShowAddSeason(false);}}/>}
     {editSeasonModal&&<EditSeasonModal season={editSeasonModal} onClose={()=>setEditSeasonModal(null)} onSave={s=>{setSeasons(p=>p.map(x=>x.teamId===s.teamId?(x.id===s.id?s:{...x,isCurrent:s.isCurrent?false:x.isCurrent}):x));setEditSeasonModal(null);}}/>}
-    {gameModal&&<ErrorBoundary><GameModal game={gameModal} players={teamPlayers} events={seasonEvents} onClose={()=>setGameModal(null)} onSave={saveGame} onDelete={deleteGame}/></ErrorBoundary>}
+    {gameModal&&<ErrorBoundary><GameModal game={gameModal} players={teamPlayers} events={seasonEvents} seasonGames={seasonGames} onClose={()=>setGameModal(null)} onSave={saveGame} onDelete={deleteGame}/></ErrorBoundary>}
     {playerModal&&<PlayerModal player={playerModal} games={seasonGames} allGames={allTeamGames} seasons={seasons} onClose={()=>setPlayerModal(null)}/>}
   </div>;
 }
@@ -347,7 +320,6 @@ function Dashboard({games,events,players,season,onOpenGame,onOpenPlayer}){
   const getEv=eid=>events.find(e=>e.id===eid);
   const fmtDate=d=>{try{return new Date(d).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});}catch{return d||"";}};
   const badge=g=>{const r=g.goalsFor>g.goalsAgainst?"win":g.goalsFor<g.goalsAgainst?"loss":"draw";const bg={win:"#d4edda",loss:"#f8d7da",draw:"#fff3cd"}[r],col={win:"#155724",loss:"#721c24",draw:"#856404"}[r];return <span style={{background:bg,color:col,padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:700}}>{g.goalsFor}–{g.goalsAgainst}</span>;};
-
   return <div>
     <h2 style={{color:C.navy,marginBottom:12,fontWeight:800}}>{season?.name} — Dashboard</h2>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:10,marginBottom:14}}>
@@ -410,13 +382,12 @@ function Schedule({games,events,seasonId,setGames,setEvents,onOpenGame}){
   const fmtDate=d=>{try{return new Date(d).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});}catch{return d||"";}};
   const addGame=eid=>{
     if(!gf.opponent)return;
-    setGames(p=>[...p,{id:uid(),seasonId,eventId:eid,opponent:gf.opponent,date:gf.date,location:gf.location,homeAway:gf.homeAway,played:false,goalsFor:0,goalsAgainst:0,h1For:0,h2For:0,h1Against:0,h2Against:0,format:"11",formation:"4-3-3",playerStats:[],fieldPositions:[],notes:""}]);
+    setGames(p=>[...p,{id:uid(),seasonId,eventId:eid,opponent:gf.opponent,date:gf.date,location:gf.location,homeAway:gf.homeAway,played:false,goalsFor:0,goalsAgainst:0,h1For:0,h2For:0,h1Against:0,h2Against:0,format:"11",formation:"4-3-3",formation2:"4-3-3",playerStats:[],fieldPositions:[],fieldPositions2:[],notes:""}]);
     setGf({opponent:"",date:"",location:"",homeAway:"home"});
   };
   const saveEvent=ev=>{setEvents(p=>p.find(e=>e.id===ev.id)?p.map(e=>e.id===ev.id?ev:e):[...p,ev]);setEditEvent(null);setAddEventOpen(false);};
   const tIcon={Tournament:"🏟️",League:"📋",Cup:"🥇",Friendly:"🤝"};
   const pIcon=pl=>pl==="Champion"?"🏆":pl==="Runner-Up"?"🥈":null;
-
   return <div>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
       <h2 style={{color:C.navy,fontWeight:800}}>Schedule & Events</h2>
@@ -475,17 +446,16 @@ function Schedule({games,events,seasonId,setGames,setEvents,onOpenGame}){
 // ── Roster ─────────────────────────────────────────────────────────────────
 function Roster({players,games,teamId,setPlayers,onOpenPlayer}){
   const [form,setForm]=useState({name:"",number:""});
-  const [view,setView]=useState("active"); // "active" | "archived"
+  const [view,setView]=useState("active");
   const [showAddExisting,setShowAddExisting]=useState(false);
+  const [editPlayer,setEditPlayer]=useState(null);
 
-  // Active = on this team and not archived
-  // Archived = archived flag is true (show all archived regardless of team for restore)
-  const teamActive=players.filter(p=>(p.teamIds||[p.teamId]).includes(teamId)&&!p.archived);
-  const allArchived=players.filter(p=>p.archived);
+  const teamActive=players.filter(p=>getTeamIds(p).includes(teamId)&&!isArchived(p));
+  const allArchived=players.filter(p=>isArchived(p));
   const displayed=view==="active"?teamActive:allArchived;
 
-  // Players not already on this team and not archived — for the "add existing" pool
-  const notOnTeam=players.filter(p=>!(p.teamIds||[p.teamId]).includes(teamId)&&!p.archived);
+  // All players NOT on this team and NOT archived — regardless of other teams
+  const availableToAdd=players.filter(p=>!isArchived(p)&&!getTeamIds(p).includes(teamId));
 
   const played=games.filter(g=>g.played);
   const statSum=(pid,stat)=>played.reduce((a,g)=>{const ps=(g.playerStats||[]).find(p=>p.pid===pid);return a+(ps?ps[stat]||0:0);},0);
@@ -497,25 +467,21 @@ function Roster({players,games,teamId,setPlayers,onOpenPlayer}){
     setPlayers(p=>[...p,{id:uid(),teamIds:[teamId],name:form.name,number:parseInt(form.number),archived:false}]);
     setForm({name:"",number:""});
   };
-
   const archivePlayer=pid=>setPlayers(p=>p.map(x=>x.id===pid?{...x,archived:true}:x));
   const restorePlayer=pid=>setPlayers(p=>p.map(x=>x.id===pid?{...x,archived:false,teamIds:[...new Set([...getTeamIds(x),teamId])]}:x));
   const removeFromTeam=pid=>setPlayers(p=>p.map(x=>x.id===pid?{...x,teamIds:getTeamIds(x).filter(t=>t!==teamId)}:x));
   const addExistingToTeam=pid=>setPlayers(p=>p.map(x=>x.id===pid?{...x,teamIds:[...new Set([...getTeamIds(x),teamId])]}:x));
+  const saveEditPlayer=updated=>setPlayers(p=>p.map(x=>x.id===updated.id?{...x,...updated}:x));
 
   const btnStyle=active=>({padding:"5px 14px",fontSize:12,fontWeight:700,borderRadius:6,cursor:"pointer",border:`2px solid ${C.navy}`,background:active?C.navy:"transparent",color:active?"#fff":C.navy,fontFamily:"inherit"});
 
   return <div>
     <h2 style={{color:C.navy,marginBottom:14,fontWeight:800}}>Roster</h2>
-
-    {/* Toggle */}
     <div style={{display:"flex",gap:6,marginBottom:14,alignItems:"center"}}>
       <button style={btnStyle(view==="active")} onClick={()=>setView("active")}>Active ({teamActive.length})</button>
       <button style={btnStyle(view==="archived")} onClick={()=>setView("archived")}>🗄 Alumni ({allArchived.length})</button>
       {view==="active"&&<Btn sm variant="outline" onClick={()=>setShowAddExisting(true)} style={{marginLeft:8}}>+ Add Existing Player</Btn>}
     </div>
-
-    {/* Add new player — only on active view */}
     {view==="active"&&<Card style={{marginBottom:14}}>
       <h3 style={{marginBottom:10,fontSize:14,color:C.navy}}>Add New Player</h3>
       <div style={{display:"grid",gridTemplateColumns:"2fr 1fr auto",gap:8,alignItems:"end"}}>
@@ -524,66 +490,71 @@ function Roster({players,games,teamId,setPlayers,onOpenPlayer}){
         <Btn onClick={addPlayer}>Add</Btn>
       </div>
     </Card>}
-
-    {/* Player table */}
     <Card>
       {displayed.length===0&&<p style={{color:C.grayDark,fontSize:13}}>{view==="active"?"No active players on this team.":"No alumni yet."}</p>}
-      {displayed.length>0&&<div style={{overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-          <thead><tr>
-            <TH>#</TH><TH>Name</TH>
-            {view==="active"&&<><TH center>Goals</TH><TH center>Assists</TH><TH center>🟨</TH><TH center>🟥</TH><TH center>Starts</TH><TH center>Captain</TH><TH>Teams</TH></>}
-            {view==="archived"&&<><TH>Teams (when active)</TH></>}
-            <TH>Actions</TH>
-          </tr></thead>
-          <tbody>{[...displayed].sort((a,b)=>a.number-b.number).map(p=>{
-            const tIds=p.teamIds||[p.teamId];
-            return <tr key={p.id}>
-              <TD><strong>{p.number}</strong></TD>
-              <TD>
-                <span onClick={()=>onOpenPlayer(p.id)} style={{cursor:"pointer",textDecoration:"underline",color:C.navy,fontWeight:600}}>{p.name}</span>
-              </TD>
+      {displayed.length>0&&<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+        <thead><tr>
+          <TH>#</TH><TH>Name</TH>
+          {view==="active"&&<><TH center>Goals</TH><TH center>Assists</TH><TH center>🟨</TH><TH center>🟥</TH><TH center>Starts</TH><TH center>Captain</TH><TH>Teams</TH></>}
+          {view==="archived"&&<TH>Teams</TH>}
+          <TH>Actions</TH>
+        </tr></thead>
+        <tbody>{[...displayed].sort((a,b)=>a.number-b.number).map(p=>{
+          const tIds=getTeamIds(p);
+          return <tr key={p.id}>
+            <TD><strong>{p.number}</strong></TD>
+            <TD><span onClick={()=>onOpenPlayer(p.id)} style={{cursor:"pointer",textDecoration:"underline",color:C.navy,fontWeight:600}}>{p.name}</span></TD>
+            {view==="active"&&<>
+              <TD center>{statSum(p.id,"goals")}</TD><TD center>{statSum(p.id,"assists")}</TD>
+              <TD center>{statSum(p.id,"yellowCards")}</TD><TD center>{statSum(p.id,"redCards")}</TD>
+              <TD center>{starts(p.id)}</TD><TD center>{caps(p.id)}</TD>
+              <TD><span style={{fontSize:11,color:C.grayDark}}>{tIds.length} team{tIds.length!==1?"s":""}</span></TD>
+            </>}
+            {view==="archived"&&<TD><span style={{fontSize:11,color:C.grayDark}}>{tIds.length} team{tIds.length!==1?"s":""}</span></TD>}
+            <TD><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+              <Btn sm variant="outline" onClick={()=>setEditPlayer({...p})}>✏️</Btn>
               {view==="active"&&<>
-                <TD center>{statSum(p.id,"goals")}</TD>
-                <TD center>{statSum(p.id,"assists")}</TD>
-                <TD center>{statSum(p.id,"yellowCards")}</TD>
-                <TD center>{statSum(p.id,"redCards")}</TD>
-                <TD center>{starts(p.id)}</TD>
-                <TD center>{caps(p.id)}</TD>
-                <TD><span style={{fontSize:11,color:C.grayDark}}>{getTeamIds(p).length} team{getTeamIds(p).length!==1?"s":""}</span></TD>
+                <Btn sm variant="outline" onClick={()=>archivePlayer(p.id)}>🗄 Archive</Btn>
+                {tIds.length>1&&<Btn sm variant="red" onClick={()=>removeFromTeam(p.id)}>Remove</Btn>}
               </>}
-              {view==="archived"&&<TD><span style={{fontSize:11,color:C.grayDark}}>{getTeamIds(p).length} team{getTeamIds(p).length!==1?"s":""}</span></TD>}
-              <TD>
-                <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                  {view==="active"&&<>
-                    <Btn sm variant="outline" onClick={()=>archivePlayer(p.id)}>🗄 Archive</Btn>
-                    {getTeamIds(p).length>1&&<Btn sm variant="red" onClick={()=>removeFromTeam(p.id)}>Remove from Team</Btn>}
-                  </>}
-                  {view==="archived"&&<Btn sm onClick={()=>restorePlayer(p.id)}>↩ Restore</Btn>}
-                </div>
-              </TD>
-            </tr>;
-          })}</tbody>
-        </table>
-      </div>}
+              {view==="archived"&&<Btn sm onClick={()=>restorePlayer(p.id)}>↩ Restore</Btn>}
+            </div></TD>
+          </tr>;
+        })}</tbody>
+      </table></div>}
     </Card>
 
-    {/* Add existing player modal */}
     {showAddExisting&&<Modal onClose={()=>setShowAddExisting(false)} maxWidth={500}>
       <h3 style={{color:C.navy,marginBottom:14}}>Add Existing Player to Team</h3>
-      {notOnTeam.length===0&&<p style={{color:C.grayDark,fontSize:13}}>No other players available. All active players are already on this team.</p>}
-      {notOnTeam.length>0&&<div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:360,overflowY:"auto"}}>
-        {[...notOnTeam].sort((a,b)=>a.name.localeCompare(b.name)).map(p=>(
+      {availableToAdd.length===0&&<p style={{color:C.grayDark,fontSize:13}}>All active players are already on this team.</p>}
+      {availableToAdd.length>0&&<div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:360,overflowY:"auto"}}>
+        {[...availableToAdd].sort((a,b)=>a.name.localeCompare(b.name)).map(p=>(
           <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:C.gray,borderRadius:8}}>
             <div>
               <span style={{fontWeight:700}}>#{p.number} {p.name}</span>
-              <span style={{fontSize:11,color:C.grayDark,marginLeft:8}}>{(p.teamIds||[p.teamId]).length} team{(p.teamIds||[p.teamId]).length!==1?"s":""}</span>
+              <span style={{fontSize:11,color:C.grayDark,marginLeft:8}}>{getTeamIds(p).length} team{getTeamIds(p).length!==1?"s":""}</span>
             </div>
             <Btn sm onClick={()=>{addExistingToTeam(p.id);setShowAddExisting(false);}}>+ Add</Btn>
           </div>
         ))}
       </div>}
       <div style={{marginTop:14}}><Btn variant="outline" onClick={()=>setShowAddExisting(false)}>Close</Btn></div>
+    </Modal>}
+
+    {editPlayer&&<Modal onClose={()=>setEditPlayer(null)} maxWidth={420}>
+      <h3 style={{color:C.navy,marginBottom:14}}>Edit Player</h3>
+      <div style={{display:"grid",gap:12}}>
+        <div><Label>Name</Label><TextInput value={editPlayer.name} onChange={e=>setEditPlayer({...editPlayer,name:e.target.value})} placeholder="Full name"/></div>
+        <div><Label>Jersey #</Label><TextInput type="number" value={editPlayer.number} onChange={e=>setEditPlayer({...editPlayer,number:parseInt(e.target.value)||editPlayer.number})} placeholder="#"/></div>
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.gray,borderRadius:8}}>
+          <input type="checkbox" id="archivedFlag" checked={!!editPlayer.archived} onChange={e=>setEditPlayer({...editPlayer,archived:e.target.checked})} style={{width:16,height:16,cursor:"pointer"}}/>
+          <label htmlFor="archivedFlag" style={{fontSize:14,fontWeight:600,cursor:"pointer",color:C.navy}}>🗄 Mark as Alumni (Archived)</label>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:8,marginTop:16}}>
+        <Btn onClick={()=>{if(editPlayer.name){saveEditPlayer(editPlayer);setEditPlayer(null);}}} >Save</Btn>
+        <Btn variant="outline" onClick={()=>setEditPlayer(null)}>Cancel</Btn>
+      </div>
     </Modal>}
   </div>;
 }
@@ -595,35 +566,26 @@ function Report({players,games,events,seasons,selTeam,selSeason}){
   const teamSeasonIds=new Set(teamSeasons.map(s=>s.id));
   const teamEvents=events.filter(e=>teamSeasonIds.has(e.seasonId));
   const getEvent=eid=>teamEvents.find(e=>e.id===eid);
-
   const [mode,setMode]=useState("current");
   const [filterSeason,setFilterSeason]=useState(selSeason||"");
   const [filterEventType,setFilterEventType]=useState("all");
   const [filterEvent,setFilterEvent]=useState("all");
   const [reportTab,setReportTab]=useState("team");
-
-  // Step 1: scope
   const scopedGames=games.filter(x=>{
     if(!x.played)return false;
     if(mode==="current"&&currentSeason)return x.seasonId===currentSeason.id;
     if(mode==="season"&&filterSeason)return x.seasonId===filterSeason;
     return true;
   });
-
-  // Step 2: events in scope for dropdowns
   const scopeEventIds=[...new Set(scopedGames.map(g=>g.eventId).filter(Boolean))];
   const scopeEvents=scopeEventIds.map(eid=>getEvent(eid)).filter(Boolean);
   const scopeEventsFiltered=filterEventType==="all"?scopeEvents:scopeEvents.filter(ev=>ev.type===filterEventType);
-
-  // Step 3: filtered games
   const filteredGames=scopedGames.filter(g=>{
     if(filterEvent!=="all")return g.eventId===filterEvent;
     if(filterEventType!=="all"){const ev=getEvent(g.eventId);return ev&&ev.type===filterEventType;}
     return true;
   });
-
   const btnStyle=active=>({padding:"5px 12px",fontSize:12,fontWeight:700,borderRadius:6,cursor:"pointer",border:`2px solid ${C.navy}`,background:active?C.navy:"transparent",color:active?"#fff":C.navy,fontFamily:"inherit"});
-
   return <div>
     <h2 style={{color:C.navy,marginBottom:14,fontWeight:800}}>Analytics</h2>
     <Card style={{marginBottom:14,padding:12}}>
@@ -662,38 +624,29 @@ function Report({players,games,events,seasons,selTeam,selSeason}){
 
 // ── Team Analytics ─────────────────────────────────────────────────────────
 function TeamAnalytics({games,allGames,seasons,mode,getEvent}){
-  const W=g=>g.goalsFor>g.goalsAgainst, L=g=>g.goalsFor<g.goalsAgainst;
+  const W=g=>g.goalsFor>g.goalsAgainst,L=g=>g.goalsFor<g.goalsAgainst;
   const seasonRows=seasons.map(s=>{
     const sg=allGames.filter(g=>g.seasonId===s.id);
     const w=sg.filter(W).length,l=sg.filter(L).length,d=sg.length-w-l;
     const gf=sg.reduce((a,g)=>a+(g.goalsFor||0),0),ga=sg.reduce((a,g)=>a+(g.goalsAgainst||0),0);
-    const cs=sg.filter(g=>g.goalsAgainst===0).length;
-    return{name:s.name,isCurrent:s.isCurrent,played:sg.length,w,l,d,gf,ga,diff:gf-ga,cs};
+    return{name:s.name,isCurrent:s.isCurrent,played:sg.length,w,l,d,gf,ga,diff:gf-ga,cs:sg.filter(g=>g.goalsAgainst===0).length};
   }).filter(r=>r.played>0);
-
-  const homeG=games.filter(g=>g.homeAway==="home"), awayG=games.filter(g=>g.homeAway==="away");
+  const homeG=games.filter(g=>g.homeAway==="home"),awayG=games.filter(g=>g.homeAway==="away");
   const rec=gs=>({w:gs.filter(W).length,l:gs.filter(L).length,d:gs.filter(g=>!W(g)&&!L(g)).length,gf:gs.reduce((a,g)=>a+(g.goalsFor||0),0),ga:gs.reduce((a,g)=>a+(g.goalsAgainst||0),0)});
   const hr=rec(homeG),ar=rec(awayG);
-
   const h1f=games.reduce((a,g)=>a+(g.h1For||0),0),h2f=games.reduce((a,g)=>a+(g.h2For||0),0);
   const h1a=games.reduce((a,g)=>a+(g.h1Against||0),0),h2a=games.reduce((a,g)=>a+(g.h2Against||0),0);
   const maxH=Math.max(h1f,h2f,h1a,h2a,1);
   const bar=(v,color)=><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:`${Math.round(v/maxH*120)}px`,height:14,background:color,borderRadius:3,minWidth:4}}/><span style={{fontSize:12,fontWeight:700}}>{v}</span></div>;
-
-  const cleanSheets=games.filter(g=>g.goalsAgainst===0).length;
   const bigWin=[...games].filter(W).sort((a,b)=>(b.goalsFor-b.goalsAgainst)-(a.goalsFor-a.goalsAgainst))[0];
   const bigLoss=[...games].filter(L).sort((a,b)=>(b.goalsAgainst-b.goalsFor)-(a.goalsAgainst-a.goalsFor))[0];
-
   const fmtMap={};
   games.forEach(g=>{const f=g.formation||"Unknown";if(!fmtMap[f])fmtMap[f]={f,w:0,l:0,d:0,played:0};fmtMap[f].played++;if(W(g))fmtMap[f].w++;else if(L(g))fmtMap[f].l++;else fmtMap[f].d++;});
   const fmtRows=Object.values(fmtMap).sort((a,b)=>b.played-a.played);
-
   const oppMap={};
-  games.forEach(g=>{const opp=g.opponent||"Unknown";if(!oppMap[opp])oppMap[opp]={opp,w:0,l:0,d:0,gf:0,ga:0};oppMap[opp].gf+=(g.goalsFor||0);oppMap[opp].ga+=(g.goalsAgainst||0);if(W(g))oppMap[opp].w++;else if(L(g))oppMap[opp].l++;else oppMap[opp].d++;});
+  games.forEach(g=>{const opp=g.opponent||"?";if(!oppMap[opp])oppMap[opp]={opp,w:0,l:0,d:0,gf:0,ga:0};oppMap[opp].gf+=(g.goalsFor||0);oppMap[opp].ga+=(g.goalsAgainst||0);if(W(g))oppMap[opp].w++;else if(L(g))oppMap[opp].l++;else oppMap[opp].d++;});
   const oppRows=Object.values(oppMap).sort((a,b)=>(b.w+b.l+b.d)-(a.w+a.l+a.d));
-
   const SH=({title})=><h3 style={{color:C.navy,fontSize:15,fontWeight:800,marginBottom:10}}>{title}</h3>;
-
   return <div style={{display:"grid",gap:14}}>
     <Card><SH title="📅 Season-by-Season Record"/>
       <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
@@ -728,95 +681,52 @@ function TeamAnalytics({games,allGames,seasons,mode,getEvent}){
     </div>
     <Card><SH title="🧤 Clean Sheets & Notable Results"/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12}}>
-        <div style={{background:C.gray,borderRadius:8,padding:14,textAlign:"center"}}>
-          <div style={{fontSize:28,fontWeight:800,color:C.navy}}>{cleanSheets}</div>
-          <div style={{fontSize:12,color:C.grayDark,fontWeight:600}}>Clean Sheets</div>
-        </div>
-        {bigWin&&<div style={{background:"#d4edda",borderRadius:8,padding:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#155724",marginBottom:4}}>🏆 BIGGEST WIN</div>
-          <div style={{fontWeight:800,color:"#155724"}}>vs {bigWin.opponent}</div>
-          <div style={{fontSize:20,fontWeight:800,color:"#155724"}}>{bigWin.goalsFor}–{bigWin.goalsAgainst}</div>
-        </div>}
-        {bigLoss&&<div style={{background:"#f8d7da",borderRadius:8,padding:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#721c24",marginBottom:4}}>📉 BIGGEST LOSS</div>
-          <div style={{fontWeight:800,color:"#721c24"}}>vs {bigLoss.opponent}</div>
-          <div style={{fontSize:20,fontWeight:800,color:"#721c24"}}>{bigLoss.goalsFor}–{bigLoss.goalsAgainst}</div>
-        </div>}
+        <div style={{background:C.gray,borderRadius:8,padding:14,textAlign:"center"}}><div style={{fontSize:28,fontWeight:800,color:C.navy}}>{games.filter(g=>g.goalsAgainst===0).length}</div><div style={{fontSize:12,color:C.grayDark,fontWeight:600}}>Clean Sheets</div></div>
+        {bigWin&&<div style={{background:"#d4edda",borderRadius:8,padding:14}}><div style={{fontSize:11,fontWeight:700,color:"#155724",marginBottom:4}}>🏆 BIGGEST WIN</div><div style={{fontWeight:800,color:"#155724"}}>vs {bigWin.opponent}</div><div style={{fontSize:20,fontWeight:800,color:"#155724"}}>{bigWin.goalsFor}–{bigWin.goalsAgainst}</div></div>}
+        {bigLoss&&<div style={{background:"#f8d7da",borderRadius:8,padding:14}}><div style={{fontSize:11,fontWeight:700,color:"#721c24",marginBottom:4}}>📉 BIGGEST LOSS</div><div style={{fontWeight:800,color:"#721c24"}}>vs {bigLoss.opponent}</div><div style={{fontSize:20,fontWeight:800,color:"#721c24"}}>{bigLoss.goalsFor}–{bigLoss.goalsAgainst}</div></div>}
       </div>
     </Card>
     <Card><SH title="🗂 Win Rate by Formation"/>
       {fmtRows.length===0&&<p style={{color:C.grayDark,fontSize:13}}>No data yet.</p>}
       <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
         <thead><tr><TH>Formation</TH><TH center>P</TH><TH center>W</TH><TH center>L</TH><TH center>D</TH><TH center>Win %</TH></tr></thead>
-        <tbody>{fmtRows.map(r=><tr key={r.f}>
-          <TD><strong>{r.f}</strong></TD><TD center>{r.played}</TD><TD center>{r.w}</TD><TD center>{r.l}</TD><TD center>{r.d}</TD>
-          <TD center><span style={{fontWeight:700,color:r.w/r.played>=.5?"#155724":C.red}}>{Math.round(r.w/r.played*100)}%</span></TD>
-        </tr>)}</tbody>
+        <tbody>{fmtRows.map(r=><tr key={r.f}><TD><strong>{r.f}</strong></TD><TD center>{r.played}</TD><TD center>{r.w}</TD><TD center>{r.l}</TD><TD center>{r.d}</TD><TD center><span style={{fontWeight:700,color:r.w/r.played>=.5?"#155724":C.red}}>{Math.round(r.w/r.played*100)}%</span></TD></tr>)}</tbody>
       </table></div>
     </Card>
     <Card><SH title="🆚 Opponent History"/>
       {oppRows.length===0&&<p style={{color:C.grayDark,fontSize:13}}>No games yet.</p>}
       <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
         <thead><tr><TH>Opponent</TH><TH center>P</TH><TH center>W</TH><TH center>L</TH><TH center>D</TH><TH center>GF</TH><TH center>GA</TH><TH center>+/-</TH></tr></thead>
-        <tbody>{oppRows.map(r=><tr key={r.opp}>
-          <TD><strong>{r.opp}</strong></TD><TD center>{r.w+r.l+r.d}</TD><TD center>{r.w}</TD><TD center>{r.l}</TD><TD center>{r.d}</TD><TD center>{r.gf}</TD><TD center>{r.ga}</TD>
-          <TD center style={{fontWeight:700,color:r.gf-r.ga>0?"#155724":r.gf-r.ga<0?"#721c24":C.grayDark}}>{r.gf-r.ga>0?"+":""}{r.gf-r.ga}</TD>
-        </tr>)}</tbody>
+        <tbody>{oppRows.map(r=><tr key={r.opp}><TD><strong>{r.opp}</strong></TD><TD center>{r.w+r.l+r.d}</TD><TD center>{r.w}</TD><TD center>{r.l}</TD><TD center>{r.d}</TD><TD center>{r.gf}</TD><TD center>{r.ga}</TD><TD center style={{fontWeight:700,color:r.gf-r.ga>0?"#155724":r.gf-r.ga<0?"#721c24":C.grayDark}}>{r.gf-r.ga>0?"+":""}{r.gf-r.ga}</TD></tr>)}</tbody>
       </table></div>
     </Card>
   </div>;
 }
 
-// ── Sortable Goals & Assists Table ─────────────────────────────────────────
+// ── Sortable GPG ───────────────────────────────────────────────────────────
 function SortableGPG({rows,totalGames}){
   const [sortKey,setSortKey]=useState("points");
   const [sortDir,setSortDir]=useState("desc");
-
-  const handleSort=key=>{
-    if(sortKey===key) setSortDir(d=>d==="desc"?"asc":"desc");
-    else{setSortKey(key);setSortDir("desc");}
-  };
-
-  const sorted=[...rows].sort((a,b)=>{
-    const av=a[sortKey], bv=b[sortKey];
-    return sortDir==="desc"?bv-av:av-bv;
-  });
-
+  const handleSort=key=>{if(sortKey===key)setSortDir(d=>d==="desc"?"asc":"desc");else{setSortKey(key);setSortDir("desc");}};
+  const sorted=[...rows].sort((a,b)=>sortDir==="desc"?b[sortKey]-a[sortKey]:a[sortKey]-b[sortKey]);
   const arrow=key=>sortKey===key?(sortDir==="desc"?" ▼":" ▲"):" ↕";
-
-  const SH=({label,k,center})=><th onClick={()=>handleSort(k)}
-    style={{background:C.navy,color:"#fff",padding:"7px 9px",textAlign:center?"center":"left",
-      fontSize:12,whiteSpace:"nowrap",cursor:"pointer",userSelect:"none",
-      borderBottom:sortKey===k?`3px solid ${C.red}`:"3px solid transparent"}}>
-    {label}{arrow(k)}
-  </th>;
-
-  return <div style={{overflowX:"auto"}}>
-    <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-      <thead><tr>
-        <th style={{background:C.navy,color:"#fff",padding:"7px 9px",fontSize:12}}>#</th>
-        <SH label="Player" k="p"/>
-        <SH label="Goals" k="goals" center/>
-        <SH label="G/Game" k="rate" center/>
-        <SH label="Assists" k="assists" center/>
-        <SH label="A/Game" k="arate" center/>
-        <SH label="Games" k="games" center/>
-        <SH label="Points" k="points" center/>
-      </tr></thead>
-      <tbody>{sorted.map(({p,goals,assists,rate,arate,points},i)=>(
-        <tr key={p.id} style={{background:i%2===0?"#f8f9fb":"#fff"}}>
-          <TD><strong>{p.number}</strong></TD>
-          <TD>{p.name}</TD>
-          <TD center>{goals}</TD>
-          <TD center><span style={{fontWeight:700,color:rate>=1?C.red:rate>=0.5?"#856404":C.navy}}>{rate.toFixed(2)}</span></TD>
-          <TD center>{assists}</TD>
-          <TD center><span style={{fontWeight:700,color:arate>=1?C.red:arate>=0.5?"#856404":C.navy}}>{arate.toFixed(2)}</span></TD>
-          <TD center>{totalGames}</TD>
-          <TD center><span style={{fontWeight:800,fontSize:14,color:C.navy}}>{points}</span></TD>
-        </tr>
-      ))}</tbody>
-    </table>
-  </div>;
+  const SH=({label,k,center})=><th onClick={()=>handleSort(k)} style={{background:C.navy,color:"#fff",padding:"7px 9px",textAlign:center?"center":"left",fontSize:12,whiteSpace:"nowrap",cursor:"pointer",userSelect:"none",borderBottom:sortKey===k?`3px solid ${C.red}`:"3px solid transparent"}}>{label}{arrow(k)}</th>;
+  return <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+    <thead><tr>
+      <th style={{background:C.navy,color:"#fff",padding:"7px 9px",fontSize:12}}>#</th>
+      <SH label="Player" k="name"/>
+      <SH label="Goals" k="goals" center/><SH label="G/Game" k="rate" center/>
+      <SH label="Assists" k="assists" center/><SH label="A/Game" k="arate" center/>
+      <SH label="Games" k="games" center/><SH label="Points" k="points" center/>
+    </tr></thead>
+    <tbody>{sorted.map(({p,goals,assists,rate,arate,points},i)=><tr key={p.id} style={{background:i%2===0?"#f8f9fb":"#fff"}}>
+      <TD><strong>{p.number}</strong></TD><TD>{p.name}</TD>
+      <TD center>{goals}</TD><TD center><span style={{fontWeight:700,color:rate>=1?C.red:rate>=0.5?"#856404":C.navy}}>{rate.toFixed(2)}</span></TD>
+      <TD center>{assists}</TD><TD center><span style={{fontWeight:700,color:arate>=1?C.red:arate>=0.5?"#856404":C.navy}}>{arate.toFixed(2)}</span></TD>
+      <TD center>{totalGames}</TD><TD center><span style={{fontWeight:800,fontSize:14,color:C.navy}}>{points}</span></TD>
+    </tr>)}
+    </tbody>
+  </table></div>;
 }
 
 // ── Player Analytics ───────────────────────────────────────────────────────
@@ -826,18 +736,13 @@ function PlayerAnalytics({games,allGames,players,seasons}){
   const caps=(pid,gs)=>gs.filter(g=>(g.playerStats||[]).find(p=>p.pid===pid&&p.captain)).length;
   const totalGames=games.length||1;
   const leaders=stat=>[...players].map(p=>({p,val:statSum(p.id,stat,games)})).filter(x=>x.val>0).sort((a,b)=>b.val-a.val).slice(0,5);
-  const gpg=[...players].map(p=>({
-    p,
-    goals:statSum(p.id,"goals",games),
-    assists:statSum(p.id,"assists",games),
-    rate:statSum(p.id,"goals",games)>0?Math.round(statSum(p.id,"goals",games)/totalGames*100)/100:0,
-    arate:statSum(p.id,"assists",games)>0?Math.round(statSum(p.id,"assists",games)/totalGames*100)/100:0,
-    points:statSum(p.id,"goals",games)*2+statSum(p.id,"assists",games)
-  })).filter(x=>x.goals>0||x.assists>0);
+  const gpgRows=[...players].map(p=>{
+    const goals=statSum(p.id,"goals",games),assists=statSum(p.id,"assists",games);
+    return{p,name:p.name,goals,assists,rate:Math.round(goals/totalGames*100)/100,arate:Math.round(assists/totalGames*100)/100,points:goals*2+assists,games:totalGames};
+  }).filter(x=>x.goals>0||x.assists>0);
   const startCap=[...players].map(p=>({p,st:starts(p.id,games),cap:caps(p.id,games),stPct:Math.round(starts(p.id,games)/totalGames*100),capPct:Math.round(caps(p.id,games)/totalGames*100)})).filter(x=>x.st>0||x.cap>0).sort((a,b)=>b.st-a.st);
-  const seasonLines=players.map(p=>({p,rows:seasons.map(s=>{const sg=allGames.filter(g=>g.seasonId===s.id);return{season:s.name,isCurrent:s.isCurrent,goals:statSum(p.id,"goals",sg),assists:statSum(p.id,"assists",sg),yc:statSum(p.id,"yellowCards",sg),rc:statSum(p.id,"redCards",sg),starts:starts(p.id,sg),caps:caps(p.id,sg)};}).filter(r=>r.starts>0||r.goals>0||r.assists>0)})).filter(x=>x.rows.length>0);
+  const seasonLines=players.map(p=>({p,rows:seasons.map(s=>{const sg=allGames.filter(g=>g.seasonId===s.id);const st=starts(p.id,sg),cap=caps(p.id,sg),goals=statSum(p.id,"goals",sg),assists=statSum(p.id,"assists",sg),yc=statSum(p.id,"yellowCards",sg),rc=statSum(p.id,"redCards",sg);if(st===0&&goals===0&&assists===0&&yc===0&&rc===0&&cap===0)return null;return{season:s.name,isCurrent:s.isCurrent,goals,assists,yc,rc,starts:st,caps:cap};}).filter(Boolean)})).filter(x=>x.rows.length>0);
   const SH=({title})=><h3 style={{color:C.navy,fontSize:15,fontWeight:800,marginBottom:10}}>{title}</h3>;
-
   return <div style={{display:"grid",gap:14}}>
     <Card><SH title="🏆 Leaders"/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12}}>
@@ -852,10 +757,11 @@ function PlayerAnalytics({games,allGames,players,seasons}){
       </div>
     </Card>
     <Card><SH title="⚡ Goals & Assists Per Game"/>
-      {gpg.length===0&&<p style={{color:C.grayDark,fontSize:13}}>No goals or assists yet.</p>}
-      {gpg.length>0&&<SortableGPG rows={gpg} totalGames={totalGames}/>}
+      {gpgRows.length===0&&<p style={{color:C.grayDark,fontSize:13}}>No goals or assists yet.</p>}
+      {gpgRows.length>0&&<SortableGPG rows={gpgRows} totalGames={totalGames}/>}
     </Card>
     <Card><SH title="🔰 Starting % & Captain Frequency"/>
+      {startCap.length===0&&<p style={{color:C.grayDark,fontSize:13}}>No data yet.</p>}
       <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
         <thead><tr><TH>#</TH><TH>Player</TH><TH center>Starts</TH><TH center>Start %</TH><TH center>Captain</TH><TH center>Captain %</TH></tr></thead>
         <tbody>{startCap.map(({p,st,cap,stPct,capPct})=><tr key={p.id}>
@@ -908,11 +814,9 @@ function MatchdaySheet({game,players,events,onClose}){
   const ev=events.find(e=>e.id===game.eventId);
   const fmtDate=d=>{try{return new Date(d).toLocaleString([],{weekday:"short",month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit"});}catch{return d||"";}};
   const captains=(game.playerStats||[]).filter(ps=>ps.captain).map(ps=>players.find(p=>p.id===ps.pid)).filter(Boolean);
-  const fieldPos=game.fieldPositions||[];
   const getPlayer=pid=>players.find(p=>p.id===pid);
   const W=400,H=520;
-
-  const fieldSVG=(positions)=><svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"100%"}}>
+  const fieldSVG=positions=><svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"100%"}}>
     <rect width={W} height={H} fill="#2e7d32"/>
     <rect x="20" y="15" width="360" height="490" fill="none" stroke="rgba(255,255,255,.7)" strokeWidth="2"/>
     <line x1="20" y1="260" x2="380" y2="260" stroke="rgba(255,255,255,.6)" strokeWidth="1.5"/>
@@ -932,7 +836,6 @@ function MatchdaySheet({game,players,events,onClose}){
       </g>;
     })}
   </svg>;
-
   return <div onClick={e=>{if(e.target===e.currentTarget)onClose();}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:200,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:20}}>
     <div style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:780,padding:24}}>
       <div className="no-print" style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
@@ -949,22 +852,13 @@ function MatchdaySheet({game,players,events,onClose}){
               <div style={{fontSize:20,fontWeight:800,color:"#0a1f44"}}>SNFC vs {game.opponent}</div>
               <div style={{fontSize:12,color:"#555",marginTop:2}}>{fmtDate(game.date)}{game.location?` · ${game.location}`:""}{ev?` · ${ev.name}`:""}</div>
             </div>
-            <div style={{textAlign:"right"}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#0a1f44",textTransform:"uppercase",letterSpacing:.5}}>Formation</div>
-              <div style={{fontSize:16,fontWeight:800}}>{game.formation||"—"}</div>
-            </div>
+            <div style={{textAlign:"right"}}><div style={{fontSize:11,fontWeight:700,color:"#0a1f44",textTransform:"uppercase",letterSpacing:.5}}>Formation</div><div style={{fontSize:16,fontWeight:800}}>{game.formation||"—"}</div></div>
           </div>
           {captains.length>0&&<div style={{marginTop:6,fontSize:12}}><strong>Captain{captains.length>1?"s":""}:</strong> {captains.map(p=>`#${p.number} ${p.name}`).join(", ")}</div>}
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10,pageBreakAfter:"always"}}>
-          <div>
-            <div style={{fontSize:11,fontWeight:700,textAlign:"center",marginBottom:4,color:"#0a1f44",textTransform:"uppercase",letterSpacing:.5}}>Starting Formation</div>
-            <div style={{aspectRatio:"400/520",borderRadius:6,overflow:"hidden",border:"1px solid #ccc"}}>{fieldSVG(game.fieldPositions||[])}</div>
-          </div>
-          <div>
-            <div style={{fontSize:11,fontWeight:700,textAlign:"center",marginBottom:4,color:"#0a1f44",textTransform:"uppercase",letterSpacing:.5}}>2nd Half Formation</div>
-            <div style={{aspectRatio:"400/520",borderRadius:6,overflow:"hidden",border:"1px solid #ccc"}}>{fieldSVG(game.fieldPositions2||[])}</div>
-          </div>
+          <div><div style={{fontSize:11,fontWeight:700,textAlign:"center",marginBottom:4,color:"#0a1f44",textTransform:"uppercase",letterSpacing:.5}}>Starting Formation</div><div style={{aspectRatio:"400/520",borderRadius:6,overflow:"hidden",border:"1px solid #ccc"}}>{fieldSVG(game.fieldPositions||[])}</div></div>
+          <div><div style={{fontSize:11,fontWeight:700,textAlign:"center",marginBottom:4,color:"#0a1f44",textTransform:"uppercase",letterSpacing:.5}}>2nd Half Formation</div><div style={{aspectRatio:"400/520",borderRadius:6,overflow:"hidden",border:"1px solid #ccc"}}>{fieldSVG(game.fieldPositions2||[])}</div></div>
         </div>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,marginBottom:10}}>
           <thead><tr style={{background:"#0a1f44",color:"#fff"}}>
@@ -996,10 +890,7 @@ function MatchdaySheet({game,players,events,onClose}){
           </div>)}
         </div>
         <div style={{marginTop:10,display:"flex",justifyContent:"center",borderTop:"2px solid #0a1f44",paddingTop:8}}>
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:10,fontWeight:700,textTransform:"uppercase",color:"#555",letterSpacing:.5}}>Final Score</div>
-            <div style={{fontSize:22,fontWeight:800,color:"#0a1f44",letterSpacing:8}}>__ — __</div>
-          </div>
+          <div style={{textAlign:"center"}}><div style={{fontSize:10,fontWeight:700,textTransform:"uppercase",color:"#555",letterSpacing:.5}}>Final Score</div><div style={{fontSize:22,fontWeight:800,color:"#0a1f44",letterSpacing:8}}>__ — __</div></div>
         </div>
       </div>
     </div>
@@ -1007,7 +898,7 @@ function MatchdaySheet({game,players,events,onClose}){
 }
 
 // ── Game Modal ─────────────────────────────────────────────────────────────
-function GameModal({game,players,events,onClose,onSave,onDelete}){
+function GameModal({game,players,events,seasonGames,onClose,onSave,onDelete}){
   const [g,setG]=useState({...game,playerStats:(game.playerStats||[]).map(s=>({...s})),fieldPositions:game.fieldPositions||[],fieldPositions2:game.fieldPositions2||[],formation2:game.formation2||game.formation||"4-3-3",notes:game.notes||"",h1For:game.h1For||0,h2For:game.h2For||0,h1Against:game.h1Against||0,h2Against:game.h2Against||0});
   const [showMatchday,setShowMatchday]=useState(false);
   const [activeTab,setActiveTab]=useState("stats");
@@ -1019,6 +910,7 @@ function GameModal({game,players,events,onClose,onSave,onDelete}){
   const [fieldPos2,setFieldPos2]=useState(()=>game.fieldPositions2&&game.fieldPositions2.length>0?game.fieldPositions2:fpos(game.formation2||game.formation||"4-3-3",cnt-1).map(x=>({...x,pid:null})));
   const bench=players.filter(p=>!fieldPos.find(x=>x.pid===p.id));
   const bench2=players.filter(p=>!fieldPos2.find(x=>x.pid===p.id));
+  const playerStarts=pid=>(seasonGames||[]).filter(g=>g.played&&(g.playerStats||[]).find(p=>p.pid===pid&&p.started)).length;
 
   const setStat=(pid,stat,val)=>setG(prev=>{const stats=prev.playerStats.map(s=>({...s}));let ps=stats.find(s=>s.pid===pid);if(!ps){ps={pid};stats.push(ps);}ps[stat]=val;return{...prev,playerStats:stats};});
   const getStat=(pid,stat)=>{const ps=g.playerStats.find(s=>s.pid===pid);return ps?(ps[stat]??0):0;};
@@ -1040,8 +932,8 @@ function GameModal({game,players,events,onClose,onSave,onDelete}){
   const onDrop2=(e,idx)=>{e.preventDefault();const pid=e.dataTransfer.getData("pid"),from=e.dataTransfer.getData("from"),fi=parseInt(e.dataTransfer.getData("idx"));setFieldPos2(prev=>{const n=prev.map(x=>({...x}));if(from==="field"){const d=n[idx].pid;n[idx].pid=pid||null;n[fi].pid=d||null;}else{n.forEach(x=>{if(x.pid===pid)x.pid=null;});n[idx].pid=pid||null;}return n;});};
   const onTapSlot2=idx=>{if(fieldPos2[idx].pid){setFieldPos2(prev=>prev.map((x,i)=>i===idx?{...x,pid:null}:x));setSelectedSlot2(null);}else setSelectedSlot2(prev=>prev===idx?null:idx);};
   const onTapBench2=pid=>{if(selectedSlot2!==null){setFieldPos2(prev=>{const n=prev.map(x=>({...x}));n.forEach(x=>{if(x.pid===pid)x.pid=null;});n[selectedSlot2].pid=pid;return n;});setSelectedSlot2(null);}};
-  const updateHalf=(key,val)=>{const v=parseInt(val)||0;setG(prev=>{const n={...prev,[key]:v};n.goalsFor=(key==="h1For"?v:prev.h1For||0)+(key==="h2For"?v:prev.h2For||0);n.goalsAgainst=(key==="h1Against"?v:prev.h1Against||0)+(key==="h2Against"?v:prev.h2Against||0);n.played=true;return n;});};
 
+  const updateHalf=(key,val)=>{const v=parseInt(val)||0;setG(prev=>{const n={...prev,[key]:v};n.goalsFor=(key==="h1For"?v:prev.h1For||0)+(key==="h2For"?v:prev.h2For||0);n.goalsAgainst=(key==="h1Against"?v:prev.h1Against||0)+(key==="h2Against"?v:prev.h2Against||0);n.played=true;return n;});};
   const FMS=FMTS[g.format]||FMTS["11"];
   const fmtDate=d=>{try{return new Date(d).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});}catch{return d||"";}};
 
@@ -1064,12 +956,7 @@ function GameModal({game,players,events,onClose,onSave,onDelete}){
         <Card style={{padding:12}}>
           <div style={{fontWeight:700,fontSize:13,color:C.navy,marginBottom:8}}>Goals by Half</div>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-            <thead><tr>
-              <th style={{background:C.navy,color:"#fff",padding:"5px 8px",fontSize:11,textAlign:"left"}}></th>
-              <th style={{background:C.navy,color:"#fff",padding:"5px 8px",fontSize:11,textAlign:"center"}}>1st</th>
-              <th style={{background:C.navy,color:"#fff",padding:"5px 8px",fontSize:11,textAlign:"center"}}>2nd</th>
-              <th style={{background:C.navy,color:"#fff",padding:"5px 8px",fontSize:11,textAlign:"center"}}>Total</th>
-            </tr></thead>
+            <thead><tr><th style={{background:C.navy,color:"#fff",padding:"5px 8px",fontSize:11,textAlign:"left"}}></th><th style={{background:C.navy,color:"#fff",padding:"5px 8px",fontSize:11,textAlign:"center"}}>1st</th><th style={{background:C.navy,color:"#fff",padding:"5px 8px",fontSize:11,textAlign:"center"}}>2nd</th><th style={{background:C.navy,color:"#fff",padding:"5px 8px",fontSize:11,textAlign:"center"}}>Total</th></tr></thead>
             <tbody>{[["Us","h1For","h2For"],["Opp","h1Against","h2Against"]].map(([lbl,h1,h2])=><tr key={lbl}>
               <td style={{padding:"5px 8px",borderBottom:`1px solid ${C.grayMid}`,fontWeight:600}}>{lbl}</td>
               {[h1,h2].map(k=><td key={k} style={{padding:"3px 5px",borderBottom:`1px solid ${C.grayMid}`,textAlign:"center"}}><NumInput value={g[k]||0} onChange={e=>updateHalf(k,e.target.value)} width={50}/></td>)}
@@ -1104,7 +991,7 @@ function GameModal({game,players,events,onClose,onSave,onDelete}){
         {formationHalf==="first"&&<div>
           <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10,flexWrap:"wrap"}}>
             <div><Label>Formation</Label><Dropdown value={g.formation||"4-3-3"} onChange={e=>onFormationChange(e.target.value)} style={{width:125}}>{FMS.map(f=><option key={f} value={f}>{f}</option>)}</Dropdown></div>
-            <div style={{fontSize:12,color:C.grayDark,marginTop:14}}><strong>Desktop:</strong> drag jerseys. <strong>Mobile:</strong> tap slot then tap player.</div>
+            <div style={{fontSize:12,color:C.grayDark,marginTop:14}}><strong>Desktop:</strong> drag. <strong>Mobile:</strong> tap slot then player.</div>
           </div>
           <div style={{display:"flex",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}>
             <div style={{flex:"1 1 240px",minWidth:200}}><SoccerField fieldPos={fieldPos} getPlayer={getPlayer} onDrop={onDrop} onDragStart={onDragStart} onTapSlot={onTapSlot} selectedSlot={selectedSlot}/></div>
@@ -1113,7 +1000,7 @@ function GameModal({game,players,events,onClose,onSave,onDelete}){
               <div style={{display:"flex",flexDirection:"column",gap:5,background:C.gray,borderRadius:8,padding:7,maxHeight:"50vh",overflowY:"auto"}}>
                 {bench.length===0&&<span style={{color:C.grayDark,fontSize:12}}>All placed</span>}
                 {bench.map(p=><div key={p.id} draggable onDragStart={e=>onDragStartBench(e,p.id)} onClick={()=>onTapBench(p.id)} style={{display:"flex",alignItems:"center",gap:6,background:selectedSlot!==null?"#e8f4e8":"#fff",borderRadius:6,padding:"5px 8px",cursor:"pointer",border:`1px solid ${selectedSlot!==null?"#2e7d32":C.grayMid}`}}>
-                  <Jersey number={p.number} size={24}/><span style={{fontSize:12,fontWeight:600}}>{p.name}</span>
+                  <Jersey number={p.number} size={24}/><span style={{fontSize:12,fontWeight:600}}>{p.name} - {playerStarts(p.id)}</span>
                 </div>)}
               </div>
               {selectedSlot!==null&&<div style={{marginTop:8}}><Btn sm variant="outline" onClick={()=>setSelectedSlot(null)}>✕ Cancel</Btn></div>}
@@ -1123,7 +1010,7 @@ function GameModal({game,players,events,onClose,onSave,onDelete}){
         {formationHalf==="second"&&<div>
           <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10,flexWrap:"wrap"}}>
             <div><Label>2nd Half Formation</Label><Dropdown value={g.formation2||g.formation||"4-3-3"} onChange={e=>onFormationChange2(e.target.value)} style={{width:125}}>{FMS.map(f=><option key={f} value={f}>{f}</option>)}</Dropdown></div>
-            <div style={{fontSize:12,color:C.grayDark,marginTop:14}}><strong>Desktop:</strong> drag jerseys. <strong>Mobile:</strong> tap slot then tap player.</div>
+            <div style={{fontSize:12,color:C.grayDark,marginTop:14}}><strong>Desktop:</strong> drag. <strong>Mobile:</strong> tap slot then player.</div>
           </div>
           <div style={{display:"flex",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}>
             <div style={{flex:"1 1 240px",minWidth:200}}><SoccerField fieldPos={fieldPos2} getPlayer={getPlayer} onDrop={onDrop2} onDragStart={onDragStart2} onTapSlot={onTapSlot2} selectedSlot={selectedSlot2}/></div>
@@ -1132,7 +1019,7 @@ function GameModal({game,players,events,onClose,onSave,onDelete}){
               <div style={{display:"flex",flexDirection:"column",gap:5,background:C.gray,borderRadius:8,padding:7,maxHeight:"50vh",overflowY:"auto"}}>
                 {bench2.length===0&&<span style={{color:C.grayDark,fontSize:12}}>All placed</span>}
                 {bench2.map(p=><div key={p.id} draggable onDragStart={e=>onDragStartBench2(e,p.id)} onClick={()=>onTapBench2(p.id)} style={{display:"flex",alignItems:"center",gap:6,background:selectedSlot2!==null?"#e8f4e8":"#fff",borderRadius:6,padding:"5px 8px",cursor:"pointer",border:`1px solid ${selectedSlot2!==null?"#2e7d32":C.grayMid}`}}>
-                  <Jersey number={p.number} size={24}/><span style={{fontSize:12,fontWeight:600}}>{p.name}</span>
+                  <Jersey number={p.number} size={24}/><span style={{fontSize:12,fontWeight:600}}>{p.name} - {playerStarts(p.id)}</span>
                 </div>)}
               </div>
               {selectedSlot2!==null&&<div style={{marginTop:8}}><Btn sm variant="outline" onClick={()=>setSelectedSlot2(null)}>✕ Cancel</Btn></div>}
@@ -1141,7 +1028,7 @@ function GameModal({game,players,events,onClose,onSave,onDelete}){
         </div>}
       </div>}
     </Modal>
-    {showMatchday&&<MatchdaySheet game={{...g,fieldPositions:fieldPos}} players={players} events={events} onClose={()=>setShowMatchday(false)}/>}
+    {showMatchday&&<MatchdaySheet game={{...g,fieldPositions:fieldPos,fieldPositions2:fieldPos2}} players={players} events={events} onClose={()=>setShowMatchday(false)}/>}
   </>;
 }
 
@@ -1150,26 +1037,19 @@ function PlayerModal({player,games,allGames,seasons,onClose}){
   const [tab,setTab]=useState("season");
   const played=games.filter(g=>g.played);
   const allPlayed=allGames.filter(g=>g.played);
-
   const rows=played.map(g=>({g,ps:(g.playerStats||[]).find(p=>p.pid===player.id)||{},fp:(g.fieldPositions||[]).find(f=>f.pid===player.id)}));
   const tot=rows.reduce((a,{ps})=>({goals:a.goals+(ps.goals||0),assists:a.assists+(ps.assists||0),y:a.y+(ps.yellowCards||0),r:a.r+(ps.redCards||0),starts:a.starts+(ps.started?1:0),caps:a.caps+(ps.captain?1:0)}),{goals:0,assists:0,y:0,r:0,starts:0,caps:0});
-
-  // Career stats by season
   const careerSeasons=seasons.map(s=>{
     const sg=allPlayed.filter(g=>g.seasonId===s.id);
-    const ps_=pid=>sg.reduce((a,g)=>{const ps=(g.playerStats||[]).find(p=>p.pid===pid);return a+(ps?ps[0]||0:0);},0);
-    const statS=(stat)=>sg.reduce((a,g)=>{const ps=(g.playerStats||[]).find(p=>p.pid===player.id);return a+(ps?ps[stat]||0:0);},0);
+    const statS=stat=>sg.reduce((a,g)=>{const ps=(g.playerStats||[]).find(p=>p.pid===player.id);return a+(ps?ps[stat]||0:0);},0);
     const st=sg.filter(g=>(g.playerStats||[]).find(p=>p.pid===player.id&&p.started)).length;
     const cap=sg.filter(g=>(g.playerStats||[]).find(p=>p.pid===player.id&&p.captain)).length;
     const goals=statS("goals"),assists=statS("assists"),yc=statS("yellowCards"),rc=statS("redCards");
     if(st===0&&goals===0&&assists===0&&yc===0&&rc===0&&cap===0)return null;
-    return{season:s.name,goals,assists,yc,rc,starts:st,caps:cap,games:sg.length};
+    return{season:s.name,isCurrent:s.isCurrent,goals,assists,yc,rc,starts:st,caps:cap,games:sg.length};
   }).filter(Boolean);
-
   const careerTot=careerSeasons.reduce((a,r)=>({goals:a.goals+r.goals,assists:a.assists+r.assists,yc:a.yc+r.yc,rc:a.rc+r.rc,starts:a.starts+r.starts,caps:a.caps+r.caps,games:a.games+r.games}),{goals:0,assists:0,yc:0,rc:0,starts:0,caps:0,games:0});
-
   const btnStyle=active=>({padding:"5px 14px",fontSize:12,fontWeight:700,borderRadius:6,cursor:"pointer",border:`2px solid ${C.navy}`,background:active?C.navy:"transparent",color:active?"#fff":C.navy,fontFamily:"inherit"});
-
   return <Modal onClose={onClose} maxWidth={780}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
       <div>
@@ -1178,70 +1058,41 @@ function PlayerModal({player,games,allGames,seasons,onClose}){
       </div>
       <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:C.grayDark}}>✕</button>
     </div>
-
     <div style={{display:"flex",gap:6,marginBottom:14}}>
       <button style={btnStyle(tab==="season")} onClick={()=>setTab("season")}>This Season</button>
       <button style={btnStyle(tab==="career")} onClick={()=>setTab("career")}>Career View</button>
     </div>
-
     {tab==="season"&&<>
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
         {[["Goals",tot.goals,"⚽"],["Assists",tot.assists,"🎯"],["Yellow",tot.y,"🟨"],["Red",tot.r,"🟥"],["Starts",tot.starts,"▶"],["Captain",tot.caps,"©"]].map(([l,v,ic])=>
-          <div key={l} style={{background:C.gray,borderRadius:8,padding:"7px 12px",textAlign:"center",minWidth:65}}>
-            <div style={{fontSize:17,fontWeight:800,color:C.navy}}>{v}</div>
-            <div style={{fontSize:11,color:C.grayDark}}>{ic} {l}</div>
-          </div>)}
+          <div key={l} style={{background:C.gray,borderRadius:8,padding:"7px 12px",textAlign:"center",minWidth:65}}><div style={{fontSize:17,fontWeight:800,color:C.navy}}>{v}</div><div style={{fontSize:11,color:C.grayDark}}>{ic} {l}</div></div>)}
       </div>
       <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
         <thead><tr><TH>Opponent</TH><TH>Date</TH><TH center>Started</TH><TH center>Captain</TH><TH center>Goals</TH><TH center>Assists</TH><TH center>🟨</TH><TH center>🟥</TH><TH>Position</TH></tr></thead>
         <tbody>
           {rows.length===0&&<tr><td colSpan={9} style={{padding:10,color:C.grayDark}}>No data yet.</td></tr>}
-          {rows.map(({g,ps,fp})=><tr key={g.id}>
-            <TD>vs {g.opponent}</TD><TD>{g.date?new Date(g.date).toLocaleDateString():""}</TD>
-            <TD center>{ps.started?"✅":""}</TD><TD center>{ps.captain?"©":""}</TD>
-            <TD center>{ps.goals||0}</TD><TD center>{ps.assists||0}</TD>
-            <TD center>{ps.yellowCards||0}</TD><TD center>{ps.redCards||0}</TD>
-            <TD>{fp?.role||"—"}</TD>
-          </tr>)}
+          {rows.map(({g,ps,fp})=><tr key={g.id}><TD>vs {g.opponent}</TD><TD>{g.date?new Date(g.date).toLocaleDateString():""}</TD><TD center>{ps.started?"✅":""}</TD><TD center>{ps.captain?"©":""}</TD><TD center>{ps.goals||0}</TD><TD center>{ps.assists||0}</TD><TD center>{ps.yellowCards||0}</TD><TD center>{ps.redCards||0}</TD><TD>{fp?.role||"—"}</TD></tr>)}
         </tbody>
       </table></div>
     </>}
-
     {tab==="career"&&<>
-      {/* Career totals summary */}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
         {[["Goals",careerTot.goals,"⚽"],["Assists",careerTot.assists,"🎯"],["Yellow",careerTot.yc,"🟨"],["Red",careerTot.rc,"🟥"],["Starts",careerTot.starts,"▶"],["Captain",careerTot.caps,"©"],["Games",careerTot.games,"🏟"]].map(([l,v,ic])=>
-          <div key={l} style={{background:C.gray,borderRadius:8,padding:"7px 12px",textAlign:"center",minWidth:65}}>
-            <div style={{fontSize:17,fontWeight:800,color:C.navy}}>{v}</div>
-            <div style={{fontSize:11,color:C.grayDark}}>{ic} {l}</div>
-          </div>)}
+          <div key={l} style={{background:C.gray,borderRadius:8,padding:"7px 12px",textAlign:"center",minWidth:65}}><div style={{fontSize:17,fontWeight:800,color:C.navy}}>{v}</div><div style={{fontSize:11,color:C.grayDark}}>{ic} {l}</div></div>)}
       </div>
-      {/* Season by season career breakdown */}
       <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
         <thead><tr><TH>Season</TH><TH center>Games</TH><TH center>Starts</TH><TH center>Goals</TH><TH center>Assists</TH><TH center>Pts</TH><TH center>🟨</TH><TH center>🟥</TH><TH center>Captain</TH></tr></thead>
         <tbody>
           {careerSeasons.length===0&&<tr><td colSpan={9} style={{padding:10,color:C.grayDark}}>No career data yet.</td></tr>}
-          {careerSeasons.map(r=><tr key={r.season}>
-            <TD><strong>{r.season}</strong></TD>
-            <TD center>{r.games}</TD><TD center>{r.starts}</TD><TD center>{r.goals}</TD><TD center>{r.assists}</TD>
-            <TD center><strong>{r.goals*2+r.assists}</strong></TD>
-            <TD center>{r.yc}</TD><TD center>{r.rc}</TD><TD center>{r.caps}</TD>
-          </tr>)}
-          {careerSeasons.length>1&&<tr style={{background:"#e8edf7"}}>
-            <td style={{padding:"7px 9px",fontWeight:800,color:C.navy}}>Career Total</td>
-            <TD center><strong>{careerTot.games}</strong></TD><TD center><strong>{careerTot.starts}</strong></TD>
-            <TD center><strong>{careerTot.goals}</strong></TD><TD center><strong>{careerTot.assists}</strong></TD>
-            <TD center><strong>{careerTot.goals*2+careerTot.assists}</strong></TD>
-            <TD center><strong>{careerTot.yc}</strong></TD><TD center><strong>{careerTot.rc}</strong></TD>
-            <TD center><strong>{careerTot.caps}</strong></TD>
-          </tr>}
+          {careerSeasons.map(r=><tr key={r.season} style={{background:r.isCurrent?"#e8edf7":""}}><TD><strong>{r.season}</strong>{r.isCurrent&&<span style={{marginLeft:4,fontSize:10,color:C.red}}>⚡</span>}</TD><TD center>{r.games}</TD><TD center>{r.starts}</TD><TD center>{r.goals}</TD><TD center>{r.assists}</TD><TD center><strong>{r.goals*2+r.assists}</strong></TD><TD center>{r.yc}</TD><TD center>{r.rc}</TD><TD center>{r.caps}</TD></tr>)}
+          {careerSeasons.length>1&&<tr style={{background:"#e8edf7"}}><td style={{padding:"7px 9px",fontWeight:800,color:C.navy}}>Total</td><TD center><strong>{careerTot.games}</strong></TD><TD center><strong>{careerTot.starts}</strong></TD><TD center><strong>{careerTot.goals}</strong></TD><TD center><strong>{careerTot.assists}</strong></TD><TD center><strong>{careerTot.goals*2+careerTot.assists}</strong></TD><TD center><strong>{careerTot.yc}</strong></TD><TD center><strong>{careerTot.rc}</strong></TD><TD center><strong>{careerTot.caps}</strong></TD></tr>}
         </tbody>
       </table></div>
     </>}
   </Modal>;
 }
 
-// ── Event Modal ────────────────────────────────────────────────────────────
+// ── Modals ─────────────────────────────────────────────────────────────────
 function EventModal({event,seasonId,onClose,onSave}){
   const [f,setF]=useState(event||{id:uid(),seasonId,name:"",type:"Tournament",placement:"",dates:""});
   return <Modal onClose={onClose} maxWidth={460}>
@@ -1261,8 +1112,6 @@ function EventModal({event,seasonId,onClose,onSave}){
     <div style={{display:"flex",gap:8,marginTop:16}}><Btn onClick={()=>{if(f.name)onSave(f);}}>Save</Btn><Btn variant="outline" onClick={onClose}>Cancel</Btn></div>
   </Modal>;
 }
-
-// ── Edit Game Modal ────────────────────────────────────────────────────────
 function EditGameModal({game,events,onClose,onSave}){
   const [f,setF]=useState({...game});
   return <Modal onClose={onClose} maxWidth={460}>
@@ -1277,8 +1126,6 @@ function EditGameModal({game,events,onClose,onSave}){
     <div style={{display:"flex",gap:8,marginTop:16}}><Btn onClick={()=>{if(f.opponent)onSave(f);}}>Save</Btn><Btn variant="outline" onClick={onClose}>Cancel</Btn></div>
   </Modal>;
 }
-
-// ── Edit Season Modal ──────────────────────────────────────────────────────
 function EditSeasonModal({season,onClose,onSave}){
   const [f,setF]=useState({...season});
   return <Modal onClose={onClose} maxWidth={380}>
@@ -1293,8 +1140,6 @@ function EditSeasonModal({season,onClose,onSave}){
     <div style={{display:"flex",gap:8,marginTop:16}}><Btn onClick={()=>{if(f.name)onSave(f);}}>Save</Btn><Btn variant="outline" onClick={onClose}>Cancel</Btn></div>
   </Modal>;
 }
-
-// ── Add Team / Season ──────────────────────────────────────────────────────
 function AddTeamModal({onClose,onAdd}){
   const [name,setName]=useState("");
   return <Modal onClose={onClose} maxWidth={380}>
