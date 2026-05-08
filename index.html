@@ -45,7 +45,7 @@ function dbOff(key){db.ref(key).off();}
 <script type="text/babel">
 const {useState,useEffect,useRef}=React;
 const C={navy:"#0a1f44",red:"#c8102e",gray:"#f4f6f9",grayMid:"#dde2ea",grayDark:"#8a95a3",text:"#1a2540"};
-const FMTS={"11":["4-4-2","4-3-3","4-2-3-1","3-5-2","3-4-3"],"9":["3-3-2","3-2-3","2-4-2","4-3-1","4-2-2","3-4-1"],"7":["3-2-1","2-3-1","2-2-2","3-1-2"]};
+const FMTS={"11":["4-4-2","4-3-3","4-2-3-1","3-5-2","3-4-3"],"9":["3-3-2","3-2-3","2-4-2","4-3-1","4-2-2","3-4-1","4-1-2-1"],"7":["3-2-1","2-3-1","2-2-2","3-1-2"]};
 const ETYPES=["Tournament","League","Cup","Friendly"];
 const PLACES=["Champion","Runner-Up","3rd Place","4th Place","Semifinal","Quarterfinal","Group Stage"];
 const uid=()=>Math.random().toString(36).slice(2);
@@ -860,34 +860,36 @@ function MatchdaySheet({game,players,events,onClose}){
           <div><div style={{fontSize:11,fontWeight:700,textAlign:"center",marginBottom:4,color:"#0a1f44",textTransform:"uppercase",letterSpacing:.5}}>Starting Formation</div><div style={{aspectRatio:"400/520",borderRadius:6,overflow:"hidden",border:"1px solid #ccc"}}>{fieldSVG(game.fieldPositions||[])}</div></div>
           <div><div style={{fontSize:11,fontWeight:700,textAlign:"center",marginBottom:4,color:"#0a1f44",textTransform:"uppercase",letterSpacing:.5}}>2nd Half Formation</div><div style={{aspectRatio:"400/520",borderRadius:6,overflow:"hidden",border:"1px solid #ccc"}}>{fieldSVG(game.fieldPositions2||[])}</div></div>
         </div>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,marginBottom:10}}>
-          <thead><tr style={{background:"#0a1f44",color:"#fff"}}>
-            <th style={{padding:"4px 6px",textAlign:"left",width:24}}>#</th>
-            <th style={{padding:"4px 6px",textAlign:"left",width:120}}>Player</th>
-            <th style={{padding:"4px 6px",textAlign:"center",width:36}}>Goals</th>
-            <th style={{padding:"4px 6px",textAlign:"center",width:36}}>Assists</th>
-            <th style={{padding:"4px 6px",textAlign:"center",width:28}}>🟨</th>
-            <th style={{padding:"4px 6px",textAlign:"center",width:28}}>🟥</th>
-            <th style={{padding:"4px 6px",textAlign:"center",width:24}}>C</th>
-          </tr></thead>
-          <tbody>{[...players].sort((a,b)=>a.number-b.number).map((p,i)=>{
-            const ps=(game.playerStats||[]).find(s=>s.pid===p.id)||{};
-            return <tr key={p.id} style={{borderBottom:"1px solid #ccc"}}>
-              <td style={{padding:"4px 6px",fontWeight:700,borderRight:"1px solid #ccc"}}>{p.number}</td>
-              <td style={{padding:"4px 6px",borderRight:"1px solid #ccc",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:120}}>{p.name}{ps.captain?" ©":""}</td>
-              <td style={{padding:"4px 6px",borderRight:"1px solid #ccc",textAlign:"center"}}>&nbsp;</td>
-              <td style={{padding:"4px 6px",borderRight:"1px solid #ccc",textAlign:"center"}}>&nbsp;</td>
-              <td style={{padding:"4px 6px",borderRight:"1px solid #ccc",textAlign:"center"}}>&nbsp;</td>
-              <td style={{padding:"4px 6px",borderRight:"1px solid #ccc",textAlign:"center"}}>&nbsp;</td>
-              <td style={{padding:"4px 6px",textAlign:"center"}}>{ps.captain?"✓":""}</td>
-            </tr>;
-          })}</tbody>
-        </table>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          {["1st Half Notes","2nd Half Notes"].map(label=><div key={label} style={{border:"1px solid #ccc",borderRadius:6,padding:8}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#0a1f44",textTransform:"uppercase",letterSpacing:.5,marginBottom:6}}>{label}</div>
-            {[...Array(4)].map((_,i)=><div key={i} style={{borderBottom:"1px solid #dde2ea",height:20,marginBottom:4}}/>)}
-          </div>)}
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+            <thead><tr style={{background:"#0a1f44",color:"#fff"}}>
+              <th style={{padding:"4px 6px",textAlign:"left",width:24}}>#</th>
+              <th style={{padding:"4px 6px",textAlign:"left",width:60}}>Player</th>
+              <th style={{padding:"4px 6px",textAlign:"center",width:50}}>G</th>
+              <th style={{padding:"4px 6px",textAlign:"center",width:50}}>A</th>
+              <th style={{padding:"4px 6px",textAlign:"center",width:22}}>🟨</th>
+              <th style={{padding:"4px 6px",textAlign:"center",width:22}}>🟥</th>
+              <th style={{padding:"4px 6px",textAlign:"center",width:20}}>C</th>
+            </tr></thead>
+            <tbody>{[...players].sort((a,b)=>a.number-b.number).map((p,i)=>{
+              const ps=(game.playerStats||[]).find(s=>s.pid===p.id)||{};
+              return <tr key={p.id} style={{borderBottom:"1px solid #ccc"}}>
+                <td style={{padding:"3px 6px",fontWeight:700,borderRight:"1px solid #ccc"}}>{p.number}</td>
+                <td style={{padding:"3px 6px",borderRight:"1px solid #ccc",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:60}}>{p.name}{ps.captain?" ©":""}</td>
+                <td style={{padding:"3px 6px",borderRight:"1px solid #ccc",textAlign:"center"}}>&nbsp;</td>
+                <td style={{padding:"3px 6px",borderRight:"1px solid #ccc",textAlign:"center"}}>&nbsp;</td>
+                <td style={{padding:"3px 6px",borderRight:"1px solid #ccc",textAlign:"center"}}>&nbsp;</td>
+                <td style={{padding:"3px 6px",borderRight:"1px solid #ccc",textAlign:"center"}}>&nbsp;</td>
+                <td style={{padding:"3px 6px",textAlign:"center"}}>{ps.captain?"✓":""}</td>
+              </tr>;
+            })}</tbody>
+          </table>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {["1st Half Notes","2nd Half Notes"].map(label=><div key={label} style={{border:"1px solid #ccc",borderRadius:6,padding:8,flex:1}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#0a1f44",textTransform:"uppercase",letterSpacing:.5,marginBottom:6}}>{label}</div>
+              {[...Array(5)].map((_,i)=><div key={i} style={{borderBottom:"1px solid #dde2ea",height:18,marginBottom:3}}/>)}
+            </div>)}
+          </div>
         </div>
         <div style={{marginTop:10,display:"flex",justifyContent:"center",borderTop:"2px solid #0a1f44",paddingTop:8}}>
           <div style={{textAlign:"center"}}><div style={{fontSize:10,fontWeight:700,textTransform:"uppercase",color:"#555",letterSpacing:.5}}>Final Score</div><div style={{fontSize:22,fontWeight:800,color:"#0a1f44",letterSpacing:8}}>__ — __</div></div>
