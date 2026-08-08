@@ -13,8 +13,8 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Segoe UI',sans-serif;background:#f4f6f9;color:#1a2540;}
-input,select,button,textarea{font-family:inherit;}
 @media print{
+input,select,button,textarea{font-family:inherit;}
   body>*{visibility:hidden;}
   #matchday-print{visibility:visible;position:fixed;inset:0;padding:12px;background:#fff;}
   #matchday-print *{visibility:visible;}
@@ -45,7 +45,7 @@ function dbOff(key){db.ref(key).off();}
 <script type="text/babel">
 const {useState,useEffect,useRef}=React;
 const C={navy:"#0a1f44",red:"#c8102e",gray:"#f4f6f9",grayMid:"#dde2ea",grayDark:"#8a95a3",text:"#1a2540"};
-const FMTS={"11":["4-4-2","4-3-3","4-2-3-1","3-5-2","3-4-3"],"9":["3-3-2","3-2-3","2-4-2","4-3-1","4-2-2","3-4-1","4-2-1-1","4-1-2-1"],"7":["3-2-1","2-3-1","2-2-2","3-1-2"]};
+const FMTS={"11":["4-4-2","4-3-3","4-2-3-1","3-5-2","3-4-3"],"9":["3-3-2","3-2-3","2-4-2","4-3-1","4-2-2","3-4-1","4-1-2-1"],"7":["3-2-1","2-3-1","2-2-2","3-1-2"]};
 const ETYPES=["Tournament","League","Cup","Friendly"];
 const PLACES=["Champion","Runner-Up","3rd Place","4th Place","Semifinal","Quarterfinal","Group Stage"];
 const uid=()=>Math.random().toString(36).slice(2);
@@ -131,9 +131,9 @@ function SoccerField({fieldPos,getPlayer,onDrop,onDragStart,onTapSlot,selectedSl
         const p=getPlayer(fp.pid),isSel=selectedSlot===i;
         return <g key={i} onClick={()=>onTapSlot(i)} onDrop={e=>onDrop(e,i)} onDragOver={e=>e.preventDefault()} style={{cursor:"pointer"}}>
           {p?<g draggable onDragStart={e=>onDragStart(e,i)}>
-              <path d={`M${fp.x-12},${fp.y-10} L${fp.x-8},${fp.y-14} Q${fp.x},${fp.y-16} ${fp.x+8},${fp.y-14} L${fp.x+12},${fp.y-10} L${fp.x+15},${fp.y-3} L${fp.x+8},${fp.y-1} L${fp.x+8},${fp.y+13} L${fp.x-8},${fp.y+13} L${fp.x-8},${fp.y-1} L${fp.x-15},${fp.y-3} Z`} fill={isSel?"#c8102e":C.navy} stroke={isSel?"#fff":"#c8102e"} strokeWidth="1.5"/>
-              <text x={fp.x} y={fp.y+5} textAnchor="middle" fill="#fff" fontSize="9" fontWeight="bold">{p.number}</text>
-              <text x={fp.x} y={fp.y+20} textAnchor="middle" fill="#fff" fontSize="6.5">{p.name.split(" ")[0].slice(0,9)}</text>
+              <path d={`M${fp.x-15},${fp.y-12} L${fp.x-10},${fp.y-17} Q${fp.x},${fp.y-20} ${fp.x+10},${fp.y-17} L${fp.x+15},${fp.y-12} L${fp.x+19},${fp.y-4} L${fp.x+11},${fp.y-1} L${fp.x+11},${fp.y+16} L${fp.x-11},${fp.y+16} L${fp.x-11},${fp.y-1} L${fp.x-19},${fp.y-4} Z`} fill={isSel?"#c8102e":C.navy} stroke={isSel?"#fff":"#c8102e"} strokeWidth="1.5"/>
+              <text x={fp.x} y={fp.y+8} textAnchor="middle" fill="#fff" fontSize="11" fontWeight="bold">{p.number}</text>
+              <text x={fp.x} y={fp.y+26} textAnchor="middle" fill="#fff" fontSize="9.5">{p.name.split(" ")[0].slice(0,9)}</text>
             </g>
           :<g>
               <rect x={fp.x-14} y={fp.y-14} width="28" height="28" rx="4" fill={isSel?"rgba(255,255,255,.3)":"rgba(0,0,0,.2)"} stroke={isSel?"#fff":"rgba(255,255,255,.5)"} strokeWidth={isSel?3:1.5} strokeDasharray={isSel?"none":"4,3"}/>
@@ -188,6 +188,7 @@ function App(){
   const [gameModal,setGameModal]=useState(null);
   const [playerModal,setPlayerModal]=useState(null);
   const [showAddTeam,setShowAddTeam]=useState(false);
+  const [showManageTeams,setShowManageTeams]=useState(false);
   const [showAddSeason,setShowAddSeason]=useState(false);
   const [editSeasonModal,setEditSeasonModal]=useState(null);
   const initialized=useRef(false);
@@ -214,10 +215,16 @@ function App(){
   useEffect(()=>{if(initialized.current)syncWrite("games",games);},[games]);
   useEffect(()=>{if(initialized.current)syncWrite("players",players);},[players]);
 
+  const activeTeams=teams.filter(t=>!t.archived);
   const teamSeasons=seasons.filter(s=>s.teamId===selTeam);
   useEffect(()=>{
     if(selTeam){const ss=seasons.filter(s=>s.teamId===selTeam);const cur=ss.find(s=>s.isCurrent);setSelSeason(cur?cur.id:ss.length?ss[ss.length-1].id:null);}
   },[selTeam]);
+
+  // If the currently selected team gets archived (or removed), clear the selection.
+  useEffect(()=>{
+    if(selTeam&&!activeTeams.find(t=>t.id===selTeam)){setSelTeam(null);}
+  },[teams]);
 
   const seasonEvents=events.filter(e=>e.seasonId===selSeason);
   const seasonGames=games.filter(g=>g.seasonId===selSeason);
@@ -264,28 +271,33 @@ function App(){
   const TABS=[{id:"dashboard",label:"Dashboard"},{id:"schedule",label:"Schedule"},{id:"roster",label:"Roster"},{id:"report",label:"Report"},{id:"trophies",label:"🏆 Trophies"}];
 
   return <div style={{fontFamily:"'Segoe UI',sans-serif",background:C.gray,minHeight:"100vh",color:C.text}}>
-    <div style={{background:C.navy,padding:"0 12px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",minHeight:52}}>
-      <svg width="24" height="24" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15" fill={C.red} stroke="#fff" strokeWidth="2"/><text x="16" y="21" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="bold">⚽</text></svg>
-      <span style={{color:"#fff",fontWeight:800,fontSize:13,marginRight:4}}>SNFC Coaching</span>
-      <Dropdown value={selTeam||""} onChange={e=>setSelTeam(e.target.value)} style={{width:145,fontSize:12}}>
-        <option value="">— Team —</option>
-        {teams.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
-      </Dropdown>
-      <Btn sm variant="red" onClick={()=>setShowAddTeam(true)} style={{border:"none"}}>+ Team</Btn>
-      {selTeam&&<>
-        <Dropdown value={selSeason||""} onChange={e=>setSelSeason(e.target.value)} style={{width:145,fontSize:12}}>
-          <option value="">— Season —</option>
-          {teamSeasons.map(s=><option key={s.id} value={s.id}>{s.isCurrent?"⚡ ":""}{s.name}</option>)}
+    <div style={{background:C.navy,padding:"10px 12px 8px",display:"flex",flexDirection:"column",gap:8}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <svg width="24" height="24" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15" fill={C.red} stroke="#fff" strokeWidth="2"/><text x="16" y="21" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="bold">⚽</text></svg>
+        <span style={{color:"#fff",fontWeight:800,fontSize:15}}>SNFC Coaching</span>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        <Dropdown value={selTeam||""} onChange={e=>setSelTeam(e.target.value)} style={{width:145,fontSize:12}}>
+          <option value="">— Team —</option>
+          {activeTeams.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
         </Dropdown>
-        <Btn sm variant="red" onClick={()=>setShowAddSeason(true)} style={{border:"none"}}>+ Season</Btn>
-        <Btn sm variant="outline" onClick={()=>{const s=teamSeasons.find(x=>x.id===selSeason);if(s)setEditSeasonModal(s);}} style={{color:"#fff",borderColor:"rgba(255,255,255,.5)"}}>✏️</Btn>
-      </>}
-      <div style={{marginLeft:"auto",display:"flex",gap:4,flexWrap:"wrap"}}>
-        {TABS.map(t=><Btn key={t.id} sm onClick={()=>setTab(t.id)} style={{background:tab===t.id?C.red:"transparent",color:"#fff",border:tab===t.id?"none":"1px solid rgba(255,255,255,.3)"}}>{t.label}</Btn>)}
-        <Btn sm onClick={exportData} style={{background:"#2e7d32",color:"#fff",border:"none"}}>⬇</Btn>
-        <Btn sm onClick={importData} style={{background:"#1565c0",color:"#fff",border:"none"}}>⬆</Btn>
-        <Btn sm onClick={clearAll} style={{background:"#444",color:"#fff",border:"none"}}>🗑</Btn>
-        <Btn sm onClick={()=>firebase.auth().signOut()} style={{background:"#555",color:"#fff",border:"none"}}>Sign Out</Btn>
+        <Btn sm variant="red" onClick={()=>setShowAddTeam(true)} style={{border:"none"}}>+ Team</Btn>
+        <Btn sm variant="outline" onClick={()=>setShowManageTeams(true)} style={{color:"#fff",borderColor:"rgba(255,255,255,.5)"}}>⚙ Teams</Btn>
+        {selTeam&&<>
+          <Dropdown value={selSeason||""} onChange={e=>setSelSeason(e.target.value)} style={{width:145,fontSize:12}}>
+            <option value="">— Season —</option>
+            {teamSeasons.map(s=><option key={s.id} value={s.id}>{s.isCurrent?"⚡ ":""}{s.name}</option>)}
+          </Dropdown>
+          <Btn sm variant="red" onClick={()=>setShowAddSeason(true)} style={{border:"none"}}>+ Season</Btn>
+          <Btn sm variant="outline" onClick={()=>{const s=teamSeasons.find(x=>x.id===selSeason);if(s)setEditSeasonModal(s);}} style={{color:"#fff",borderColor:"rgba(255,255,255,.5)"}}>✏️</Btn>
+        </>}
+        <div style={{marginLeft:"auto",display:"flex",gap:4,flexWrap:"wrap"}}>
+          {TABS.map(t=><Btn key={t.id} sm onClick={()=>setTab(t.id)} style={{background:tab===t.id?C.red:"transparent",color:"#fff",border:tab===t.id?"none":"1px solid rgba(255,255,255,.3)"}}>{t.label}</Btn>)}
+          <Btn sm onClick={exportData} style={{background:"#2e7d32",color:"#fff",border:"none"}}>⬇</Btn>
+          <Btn sm onClick={importData} style={{background:"#1565c0",color:"#fff",border:"none"}}>⬆</Btn>
+          <Btn sm onClick={clearAll} style={{background:"#444",color:"#fff",border:"none"}}>🗑</Btn>
+          <Btn sm onClick={()=>firebase.auth().signOut()} style={{background:"#555",color:"#fff",border:"none"}}>Sign Out</Btn>
+        </div>
       </div>
     </div>
     <div style={{padding:16,maxWidth:1100,margin:"0 auto"}}>
@@ -298,10 +310,11 @@ function App(){
       {selTeam&&tab==="trophies"&&<TrophyRoom events={events} seasons={seasons} selTeam={selTeam}/>}
     </div>
     {showAddTeam&&<AddTeamModal onClose={()=>setShowAddTeam(false)} onAdd={t=>{setTeams(p=>[...p,t]);setSelTeam(t.id);setShowAddTeam(false);}}/>}
+    {showManageTeams&&<ManageTeamsModal teams={teams} setTeams={setTeams} selTeam={selTeam} setSelTeam={setSelTeam} onClose={()=>setShowManageTeams(false)}/>}
     {showAddSeason&&selTeam&&<AddSeasonModal teamId={selTeam} onClose={()=>setShowAddSeason(false)} onAdd={s=>{setSeasons(p=>[...p,s]);setSelSeason(s.id);setShowAddSeason(false);}}/>}
     {editSeasonModal&&<EditSeasonModal season={editSeasonModal} onClose={()=>setEditSeasonModal(null)} onSave={s=>{setSeasons(p=>p.map(x=>x.teamId===s.teamId?(x.id===s.id?s:{...x,isCurrent:s.isCurrent?false:x.isCurrent}):x));setEditSeasonModal(null);}}/>}
     {gameModal&&<ErrorBoundary><GameModal game={gameModal} players={teamPlayers} events={seasonEvents} seasonGames={seasonGames} onClose={()=>setGameModal(null)} onSave={saveGame} onDelete={deleteGame}/></ErrorBoundary>}
-    {playerModal&&<PlayerModal player={playerModal} games={seasonGames} allGames={allTeamGames} seasons={seasons} onClose={()=>setPlayerModal(null)}/>}
+    {playerModal&&<PlayerModal player={playerModal} games={seasonGames} allGames={games} seasons={seasons} teams={teams} onClose={()=>setPlayerModal(null)}/>}
   </div>;
 }
 
@@ -1035,12 +1048,13 @@ function GameModal({game,players,events,seasonGames,onClose,onSave,onDelete}){
 }
 
 // ── Player Modal ───────────────────────────────────────────────────────────
-function PlayerModal({player,games,allGames,seasons,onClose}){
+function PlayerModal({player,games,allGames,seasons,teams,onClose}){
   const [tab,setTab]=useState("season");
   const played=games.filter(g=>g.played);
   const allPlayed=allGames.filter(g=>g.played);
   const rows=played.map(g=>({g,ps:(g.playerStats||[]).find(p=>p.pid===player.id)||{},fp:(g.fieldPositions||[]).find(f=>f.pid===player.id)}));
   const tot=rows.reduce((a,{ps})=>({goals:a.goals+(ps.goals||0),assists:a.assists+(ps.assists||0),y:a.y+(ps.yellowCards||0),r:a.r+(ps.redCards||0),starts:a.starts+(ps.started?1:0),caps:a.caps+(ps.captain?1:0)}),{goals:0,assists:0,y:0,r:0,starts:0,caps:0});
+  // Career view spans every season the player has stats in, across ALL teams — not just the team currently selected.
   const careerSeasons=seasons.map(s=>{
     const sg=allPlayed.filter(g=>g.seasonId===s.id);
     const statS=stat=>sg.reduce((a,g)=>{const ps=(g.playerStats||[]).find(p=>p.pid===player.id);return a+(ps?ps[stat]||0:0);},0);
@@ -1048,7 +1062,8 @@ function PlayerModal({player,games,allGames,seasons,onClose}){
     const cap=sg.filter(g=>(g.playerStats||[]).find(p=>p.pid===player.id&&p.captain)).length;
     const goals=statS("goals"),assists=statS("assists"),yc=statS("yellowCards"),rc=statS("redCards");
     if(st===0&&goals===0&&assists===0&&yc===0&&rc===0&&cap===0)return null;
-    return{season:s.name,isCurrent:s.isCurrent,goals,assists,yc,rc,starts:st,caps:cap,games:sg.length};
+    const teamName=(teams||[]).find(t=>t.id===s.teamId)?.name||"—";
+    return{season:s.name,team:teamName,isCurrent:s.isCurrent,goals,assists,yc,rc,starts:st,caps:cap,games:sg.length};
   }).filter(Boolean);
   const careerTot=careerSeasons.reduce((a,r)=>({goals:a.goals+r.goals,assists:a.assists+r.assists,yc:a.yc+r.yc,rc:a.rc+r.rc,starts:a.starts+r.starts,caps:a.caps+r.caps,games:a.games+r.games}),{goals:0,assists:0,yc:0,rc:0,starts:0,caps:0,games:0});
   const btnStyle=active=>({padding:"5px 14px",fontSize:12,fontWeight:700,borderRadius:6,cursor:"pointer",border:`2px solid ${C.navy}`,background:active?C.navy:"transparent",color:active?"#fff":C.navy,fontFamily:"inherit"});
@@ -1083,11 +1098,11 @@ function PlayerModal({player,games,allGames,seasons,onClose}){
           <div key={l} style={{background:C.gray,borderRadius:8,padding:"7px 12px",textAlign:"center",minWidth:65}}><div style={{fontSize:17,fontWeight:800,color:C.navy}}>{v}</div><div style={{fontSize:11,color:C.grayDark}}>{ic} {l}</div></div>)}
       </div>
       <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-        <thead><tr><TH>Season</TH><TH center>Games</TH><TH center>Starts</TH><TH center>Goals</TH><TH center>Assists</TH><TH center>Pts</TH><TH center>🟨</TH><TH center>🟥</TH><TH center>Captain</TH></tr></thead>
+        <thead><tr><TH>Season</TH><TH>Team</TH><TH center>Games</TH><TH center>Starts</TH><TH center>Goals</TH><TH center>Assists</TH><TH center>Pts</TH><TH center>🟨</TH><TH center>🟥</TH><TH center>Captain</TH></tr></thead>
         <tbody>
-          {careerSeasons.length===0&&<tr><td colSpan={9} style={{padding:10,color:C.grayDark}}>No career data yet.</td></tr>}
-          {careerSeasons.map(r=><tr key={r.season} style={{background:r.isCurrent?"#e8edf7":""}}><TD><strong>{r.season}</strong>{r.isCurrent&&<span style={{marginLeft:4,fontSize:10,color:C.red}}>⚡</span>}</TD><TD center>{r.games}</TD><TD center>{r.starts}</TD><TD center>{r.goals}</TD><TD center>{r.assists}</TD><TD center><strong>{r.goals*2+r.assists}</strong></TD><TD center>{r.yc}</TD><TD center>{r.rc}</TD><TD center>{r.caps}</TD></tr>)}
-          {careerSeasons.length>1&&<tr style={{background:"#e8edf7"}}><td style={{padding:"7px 9px",fontWeight:800,color:C.navy}}>Total</td><TD center><strong>{careerTot.games}</strong></TD><TD center><strong>{careerTot.starts}</strong></TD><TD center><strong>{careerTot.goals}</strong></TD><TD center><strong>{careerTot.assists}</strong></TD><TD center><strong>{careerTot.goals*2+careerTot.assists}</strong></TD><TD center><strong>{careerTot.yc}</strong></TD><TD center><strong>{careerTot.rc}</strong></TD><TD center><strong>{careerTot.caps}</strong></TD></tr>}
+          {careerSeasons.length===0&&<tr><td colSpan={10} style={{padding:10,color:C.grayDark}}>No career data yet.</td></tr>}
+          {careerSeasons.map((r,i)=><tr key={r.season+"_"+i} style={{background:r.isCurrent?"#e8edf7":""}}><TD><strong>{r.season}</strong>{r.isCurrent&&<span style={{marginLeft:4,fontSize:10,color:C.red}}>⚡</span>}</TD><TD>{r.team}</TD><TD center>{r.games}</TD><TD center>{r.starts}</TD><TD center>{r.goals}</TD><TD center>{r.assists}</TD><TD center><strong>{r.goals*2+r.assists}</strong></TD><TD center>{r.yc}</TD><TD center>{r.rc}</TD><TD center>{r.caps}</TD></tr>)}
+          {careerSeasons.length>1&&<tr style={{background:"#e8edf7"}}><td style={{padding:"7px 9px",fontWeight:800,color:C.navy}}>Total</td><td></td><TD center><strong>{careerTot.games}</strong></TD><TD center><strong>{careerTot.starts}</strong></TD><TD center><strong>{careerTot.goals}</strong></TD><TD center><strong>{careerTot.assists}</strong></TD><TD center><strong>{careerTot.goals*2+careerTot.assists}</strong></TD><TD center><strong>{careerTot.yc}</strong></TD><TD center><strong>{careerTot.rc}</strong></TD><TD center><strong>{careerTot.caps}</strong></TD></tr>}
         </tbody>
       </table></div>
     </>}
@@ -1148,7 +1163,59 @@ function AddTeamModal({onClose,onAdd}){
     <h3 style={{color:C.navy,marginBottom:14}}>Add Team</h3>
     <Label>Team Name</Label>
     <TextInput value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. SNFC 2013 Boys"/>
-    <div style={{display:"flex",gap:8,marginTop:14}}><Btn onClick={()=>{if(name)onAdd({id:uid(),name});}}>Add</Btn><Btn variant="outline" onClick={onClose}>Cancel</Btn></div>
+    <div style={{display:"flex",gap:8,marginTop:14}}><Btn onClick={()=>{if(name)onAdd({id:uid(),name,archived:false});}}>Add</Btn><Btn variant="outline" onClick={onClose}>Cancel</Btn></div>
+  </Modal>;
+}
+function ManageTeamsModal({teams,setTeams,selTeam,setSelTeam,onClose}){
+  const [view,setView]=useState("active");
+  const [editingId,setEditingId]=useState(null);
+  const [editName,setEditName]=useState("");
+  const active=teams.filter(t=>!t.archived);
+  const archived=teams.filter(t=>t.archived);
+  const displayed=view==="active"?active:archived;
+
+  const startEdit=t=>{setEditingId(t.id);setEditName(t.name);};
+  const cancelEdit=()=>{setEditingId(null);setEditName("");};
+  const saveEdit=()=>{
+    if(!editName.trim())return;
+    setTeams(p=>p.map(t=>t.id===editingId?{...t,name:editName.trim()}:t));
+    setEditingId(null);setEditName("");
+  };
+  const archiveTeam=id=>{
+    if(!window.confirm("Archive this team? You can restore it anytime from the Archived tab."))return;
+    setTeams(p=>p.map(t=>t.id===id?{...t,archived:true}:t));
+    if(selTeam===id)setSelTeam(null);
+  };
+  const restoreTeam=id=>{
+    setTeams(p=>p.map(t=>t.id===id?{...t,archived:false}:t));
+  };
+
+  const btnStyle=isActive=>({padding:"5px 14px",fontSize:12,fontWeight:700,borderRadius:6,cursor:"pointer",border:`2px solid ${C.navy}`,background:isActive?C.navy:"transparent",color:isActive?"#fff":C.navy,fontFamily:"inherit"});
+
+  return <Modal onClose={onClose} maxWidth={520}>
+    <h3 style={{color:C.navy,marginBottom:14}}>Manage Teams</h3>
+    <div style={{display:"flex",gap:6,marginBottom:14}}>
+      <button style={btnStyle(view==="active")} onClick={()=>{setView("active");cancelEdit();}}>Active ({active.length})</button>
+      <button style={btnStyle(view==="archived")} onClick={()=>{setView("archived");cancelEdit();}}>🗄 Archived ({archived.length})</button>
+    </div>
+    {displayed.length===0&&<p style={{color:C.grayDark,fontSize:13}}>{view==="active"?"No active teams.":"No archived teams."}</p>}
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {displayed.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px",background:C.gray,borderRadius:8}}>
+        {editingId===t.id?<>
+          <TextInput value={editName} onChange={e=>setEditName(e.target.value)} style={{flex:1}}/>
+          <Btn sm onClick={saveEdit}>Save</Btn>
+          <Btn sm variant="outline" onClick={cancelEdit}>Cancel</Btn>
+        </>:<>
+          <span style={{flex:1,fontWeight:700,color:C.navy}}>{t.name}</span>
+          {view==="active"&&<>
+            <Btn sm variant="outline" onClick={()=>startEdit(t)}>✏️ Rename</Btn>
+            <Btn sm variant="red" onClick={()=>archiveTeam(t.id)}>🗄 Archive</Btn>
+          </>}
+          {view==="archived"&&<Btn sm onClick={()=>restoreTeam(t.id)}>↩ Restore</Btn>}
+        </>}
+      </div>)}
+    </div>
+    <div style={{marginTop:16}}><Btn variant="outline" onClick={onClose}>Close</Btn></div>
   </Modal>;
 }
 function AddSeasonModal({teamId,onClose,onAdd}){
